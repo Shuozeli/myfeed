@@ -1,0 +1,96 @@
+name: "Xueqiu Feed"
+description: "Extract posts and market discussions from Xueqiu with engagement metrics and stock tickers"
+version: 2
+type: query
+
+config:
+  default_timeout_ms: 20000
+  default_on_error: continue
+
+scripts:
+  extract_posts: |
+    (() => {
+      const items = document.querySelectorAll(
+        '.timeline__item, .home__timeline-item, [class*="StatusItem"], [class*="status-item"], article'
+      );
+      const results = [];
+      for (const item of items) {
+        try {
+          const textEl = item.querySelector(
+            '.status-content, [class*="content"], p, .text'
+          );
+          const text = textEl ? textEl.textContent.trim() : '';
+
+          // Author name
+          const authorEl = item.querySelector(
+            'a[href*="/u/"], .user-name, [class*="author"], [class*="username"], .name'
+          );
+          const author = authorEl ? authorEl.textContent.trim().split('\n')[0].trim() : '';
+
+          // Replies count
+          const repliesEl = item.querySelector(
+            'a[href*="reply"], [class*="reply"], [class*="comment-count"]'
+          );
+          const replies = repliesEl ? (repliesEl.textContent.trim().match(/(\d+)/) || ['', '0'])[1] : '0';
+
+          // Likes count
+          const likesEl = item.querySelector(
+            '[class*="like"], [class*="favor"]'
+          );
+          const likes = likesEl ? (likesEl.textContent.trim().match(/(\d+)/) || ['', '0'])[1] : '0';
+
+          // Stock ticker symbols from links like /S/AAPL
+          const tickerLinks = item.querySelectorAll('a[href*="/S/"]');
+          const symbols = [];
+          for (const link of tickerLinks) {
+            const tickerHref = link.getAttribute('href') || '';
+            const match = tickerHref.match(/\/S\/([A-Za-z0-9.]+)/);
+            if (match) {
+              symbols.push(match[1]);
+            }
+          }
+          const symbol = symbols.join(',');
+
+          const linkEl = item.querySelector('a[href*="/SP/"], a[href*="/status/"]');
+          const href = linkEl ? linkEl.getAttribute('href') : '';
+          const url = href.startsWith('http') ? href : (href ? 'https://xueqiu.com' + href : '');
+
+          const titleEl = item.querySelector(
+            'a[href*="/SP/"], a[href*="/u/"], h3, .status-title, [class*="title"]'
+          );
+          const titleText = titleEl ? titleEl.textContent.trim() : text.substring(0, 80);
+          const title = author ? `${author}: ${titleText}` : titleText;
+
+          const id = item.getAttribute('data-id')
+            || item.getAttribute('id')
+            || href
+            || title.substring(0, 50);
+
+          const preview = text.substring(0, 500);
+
+          if (title && id) {
+            results.push({
+              id: String(id), title, url, preview,
+              author, replies, likes, symbol
+            });
+          }
+        } catch (e) {
+          // skip malformed post
+        }
+      }
+      return JSON.stringify(results);
+    })()
+
+steps:
+  - goto: "https://xueqiu.com/"
+    wait_for: "body"
+    timeout_ms: 20000
+
+  - wait: 3000
+
+  - eval:
+      ref: extract_posts
+      save_as: items
+
+  - output:
+      items: "{{ items }}"

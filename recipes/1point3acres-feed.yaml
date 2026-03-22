@@ -1,0 +1,87 @@
+name: "1point3acres Feed"
+description: "Extract latest threads with post content from 1point3acres forum"
+version: 1
+type: query
+
+config:
+  default_timeout_ms: 60000
+  default_on_error: continue
+
+scripts:
+  extract_threads_with_content: |
+    (async () => {
+      // Step 1: Collect thread links from the listing page
+      const links = document.querySelectorAll('a[href*="thread-"]');
+      const threads = [];
+      const seen = new Set();
+      for (const a of links) {
+        const href = a.getAttribute('href') || '';
+        const text = a.textContent.trim();
+        if (text.length < 5 || seen.has(href) || !href.includes('thread-')) continue;
+        seen.add(href);
+
+        const match = href.match(/thread-(\d+)/);
+        if (!match) continue;
+        const id = match[1];
+        const url = href.startsWith('http')
+          ? href
+          : 'https://www.1point3acres.com/bbs/' + href;
+
+        threads.push({ id, title: text.substring(0, 100), url });
+      }
+
+      // Step 2: Fetch first post content for the 30 most recent threads
+      // (higher IDs = newer threads)
+      threads.sort((a, b) => parseInt(b.id) - parseInt(a.id));
+      const top = threads.slice(0, 30);
+
+      const results = [];
+      // Fetch in batches of 5 to avoid overwhelming the server
+      for (let i = 0; i < top.length; i += 5) {
+        const batch = top.slice(i, i + 5);
+        const fetches = batch.map(async (thread) => {
+          try {
+            const resp = await fetch(thread.url);
+            const buf = await resp.arrayBuffer();
+            // Discuz forums often serve GBK-encoded HTML
+            let html;
+            try {
+              html = new TextDecoder('gbk').decode(buf);
+            } catch (e) {
+              html = new TextDecoder('utf-8').decode(buf);
+            }
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+
+            // Discuz first post selector
+            const postEl = doc.querySelector('[id^="postmessage_"]');
+            const post_content = postEl
+              ? postEl.textContent.trim()
+              : '';
+            const preview = post_content.substring(0, 500);
+
+            return { ...thread, preview, post_content };
+          } catch (e) {
+            return { ...thread, preview: '' };
+          }
+        });
+        const batchResults = await Promise.all(fetches);
+        results.push(...batchResults);
+      }
+
+      return JSON.stringify(results);
+    })()
+
+steps:
+  - goto: "https://www.1point3acres.com/bbs/"
+    wait_for: "a[href*='thread-']"
+    timeout_ms: 20000
+
+  - wait: 2000
+
+  - eval:
+      ref: extract_threads_with_content
+      save_as: items
+
+  - output:
+      items: "{{ items }}"

@@ -1,0 +1,59 @@
+name: "Reddit Explore"
+description: "Explore Reddit's HTML structure for feed extraction"
+version: 1
+type: query
+
+params:
+  url:
+    type: string
+    required: false
+    default: "https://www.reddit.com"
+    description: "Reddit URL to explore"
+
+scripts:
+  dump_structure: |
+    (() => {
+      const posts = document.querySelectorAll('article, [data-testid="post-container"], shreddit-post');
+      const result = {
+        post_count: posts.length,
+        selectors_found: [],
+        sample_post: null
+      };
+
+      if (posts.length > 0) {
+        const first = posts[0];
+        result.sample_post = {
+          tag: first.tagName,
+          id: first.id,
+          classes: first.className,
+          attributes: [...first.attributes].map(a => `${a.name}=${a.value}`).slice(0, 10),
+          inner_html_preview: first.innerHTML.substring(0, 500)
+        };
+      }
+
+      // Check various selector strategies
+      const checks = [
+        'article', 'shreddit-post', '[data-testid="post-container"]',
+        'a[data-click-id="body"]', '.Post', '[data-fullpage-card]'
+      ];
+      for (const sel of checks) {
+        const count = document.querySelectorAll(sel).length;
+        if (count > 0) result.selectors_found.push({ selector: sel, count });
+      }
+
+      return JSON.stringify(result, null, 2);
+    })()
+
+steps:
+  - goto: "{{ url }}"
+    wait_for: "body"
+    timeout_ms: 15000
+
+  - wait: 3000
+
+  - eval:
+      ref: dump_structure
+      save_as: structure
+
+  - output:
+      structure: "{{ structure }}"

@@ -1,0 +1,7 @@
+/target
+.env
+*.swp
+*.swo
+*.db
+docs/private/
+.pwright/

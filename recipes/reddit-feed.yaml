@@ -1,0 +1,109 @@
+name: "Reddit Feed"
+description: "Extract top posts from Reddit with post body content"
+version: 1
+type: query
+
+config:
+  default_timeout_ms: 60000
+  default_on_error: continue
+
+scripts:
+  extract_posts_with_content: |
+    (async () => {
+      // Step 1: Collect post metadata from shreddit-post attributes
+      const postEls = document.querySelectorAll('shreddit-post');
+      const posts = [];
+      const seen = new Set();
+
+      for (const post of postEls) {
+        try {
+          const id = (post.getAttribute('id') || '').replace('t3_', '');
+          if (!id || seen.has(id)) continue;
+          seen.add(id);
+
+          const title = post.getAttribute('post-title') || '';
+          const permalink = post.getAttribute('permalink') || '';
+          const url = permalink
+            ? 'https://www.reddit.com' + permalink
+            : (post.getAttribute('content-href') || '');
+
+          const author = post.getAttribute('author') || '';
+          const subreddit = (post.getAttribute('subreddit-prefixed-name') || '').replace('r/', '');
+          const score = post.getAttribute('score') || '0';
+          const commentCount = post.getAttribute('comment-count') || '0';
+
+          if (title) {
+            posts.push({
+              id, title, url, subreddit, author,
+              upvotes: parseInt(score) || 0,
+              comments: parseInt(commentCount) || 0
+            });
+          }
+        } catch (e) {}
+      }
+
+      // Step 2: Fetch post pages for body content (top 30)
+      const top = posts.slice(0, 30);
+      const results = [];
+
+      for (let i = 0; i < top.length; i += 5) {
+        const batch = top.slice(i, i + 5);
+        const fetches = batch.map(async (post) => {
+          try {
+            const resp = await fetch(post.url, { credentials: 'include' });
+            const html = await resp.text();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+
+            // Extract self-text from the post page
+            const bodyEl = doc.querySelector(
+              '[slot="text-body"]'
+              + ', [data-testid="post-rtjson-content"]'
+              + ', .Post .RichTextJSON-root'
+              + ', .expando .usertext-body'
+            );
+
+            let preview = '';
+            if (bodyEl) {
+              preview = bodyEl.textContent.trim().substring(0, 500);
+            }
+
+            // Link posts: extract outbound link
+            if (!preview) {
+              const linkEl = doc.querySelector(
+                'a[data-testid="outbound-link"]'
+                + ', [slot="post-media-container"] a[href]'
+              );
+              if (linkEl) {
+                const linkHref = linkEl.getAttribute('href') || '';
+                if (linkHref && !linkHref.includes('reddit.com')) {
+                  preview = '[link] ' + linkHref;
+                }
+              }
+            }
+
+            return { ...post, preview };
+          } catch (e) {
+            return { ...post, preview: '' };
+          }
+        });
+        const batchResults = await Promise.all(fetches);
+        results.push(...batchResults);
+      }
+
+      return JSON.stringify(results);
+    })()
+
+steps:
+  - goto: "https://www.reddit.com"
+    wait_for: "shreddit-post"
+    timeout_ms: 15000
+
+  - wait: 3000
+
+  - eval:
+      ref: extract_posts_with_content
+      save_as: items
+
+  - output:
+      items: "{{ items }}"

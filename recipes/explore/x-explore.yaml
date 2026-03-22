@@ -1,0 +1,59 @@
+name: "X (Twitter) Explore"
+description: "Explore X's HTML structure for feed extraction"
+version: 1
+type: query
+
+params:
+  url:
+    type: string
+    required: false
+    default: "https://x.com/home"
+    description: "X URL to explore"
+
+scripts:
+  dump_structure: |
+    (() => {
+      const tweets = document.querySelectorAll('article[data-testid="tweet"], article');
+      const result = {
+        tweet_count: tweets.length,
+        selectors_found: [],
+        sample_tweet: null
+      };
+
+      if (tweets.length > 0) {
+        const first = tweets[0];
+        result.sample_tweet = {
+          tag: first.tagName,
+          id: first.id,
+          classes: first.className,
+          attributes: [...first.attributes].map(a => `${a.name}=${a.value}`).slice(0, 10),
+          inner_html_preview: first.innerHTML.substring(0, 500)
+        };
+      }
+
+      const checks = [
+        'article[data-testid="tweet"]', 'article',
+        '[data-testid="tweetText"]', '[data-testid="User-Name"]',
+        'div[data-testid="cellInnerDiv"]'
+      ];
+      for (const sel of checks) {
+        const count = document.querySelectorAll(sel).length;
+        if (count > 0) result.selectors_found.push({ selector: sel, count });
+      }
+
+      return JSON.stringify(result, null, 2);
+    })()
+
+steps:
+  - goto: "{{ url }}"
+    wait_for: "body"
+    timeout_ms: 15000
+
+  - wait: 5000
+
+  - eval:
+      ref: dump_structure
+      save_as: structure
+
+  - output:
+      structure: "{{ structure }}"

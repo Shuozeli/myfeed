@@ -1,0 +1,42 @@
+name: "Join Reddit Subreddit"
+version: 1
+type: mutation
+
+params:
+  url:
+    type: string
+    required: true
+
+config:
+  default_timeout_ms: 15000
+  default_on_error: continue
+
+scripts:
+  join: |
+    (async () => {
+      await new Promise(r => setTimeout(r, 3000));
+      // Reddit uses shreddit-subreddit-header with join button
+      const joinBtns = document.querySelectorAll('button, shreddit-join-button');
+      for (const btn of joinBtns) {
+        const text = btn.textContent.trim();
+        if (text === 'Join') {
+          btn.click();
+          await new Promise(r => setTimeout(r, 1000));
+          return JSON.stringify({status: 'joined', page: document.title});
+        }
+      }
+      for (const btn of joinBtns) {
+        const text = btn.textContent.trim();
+        if (text === 'Joined' || text === 'Leave') {
+          return JSON.stringify({status: 'already_joined', page: document.title});
+        }
+      }
+      return JSON.stringify({status: 'no_join_button', page: document.title});
+    })()
+
+steps:
+  - goto: "{{ url }}"
+    wait_for: "body"
+  - wait: 3000
+  - eval: { ref: join, save_as: result }
+  - output: { result: "{{ result }}" }

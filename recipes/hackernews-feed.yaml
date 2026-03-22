@@ -1,0 +1,108 @@
+name: "Hacker News Feed"
+description: "Extract top stories from Hacker News with scores, comment counts, and top comments"
+version: 1
+type: query
+
+config:
+  default_timeout_ms: 60000
+  default_on_error: continue
+
+scripts:
+  extract_stories_with_comments: |
+    (async () => {
+      // Step 1: Collect stories from the front page
+      const rows = document.querySelectorAll('.athing');
+      const stories = [];
+      for (const row of rows) {
+        try {
+          const titleEl = row.querySelector('.titleline > a');
+          if (!titleEl) continue;
+
+          const id = row.getAttribute('id') || '';
+          const title = titleEl.textContent.trim();
+          const url = titleEl.href || '';
+          const site_url = 'https://news.ycombinator.com/item?id=' + id;
+
+          const subtextRow = row.nextElementSibling;
+          let score = 0;
+          let comments = 0;
+          let age = '';
+
+          if (subtextRow) {
+            const scoreEl = subtextRow.querySelector('.score');
+            if (scoreEl) {
+              const m = scoreEl.textContent.match(/(\d+)/);
+              score = m ? parseInt(m[1]) : 0;
+            }
+
+            const ageEl = subtextRow.querySelector('.age');
+            age = ageEl ? ageEl.textContent.trim() : '';
+
+            const subLinks = subtextRow.querySelectorAll('a');
+            for (const a of subLinks) {
+              const cm = a.textContent.match(/(\d+)\s*comment/);
+              if (cm) {
+                comments = parseInt(cm[1]);
+                break;
+              }
+            }
+          }
+
+          if (id && title) {
+            stories.push({ id, title, url, score, comments, age, site_url });
+          }
+        } catch (e) {}
+      }
+
+      // Step 2: For the top 30 stories, fetch each discussion page and extract top 3 comments
+      const top = stories.slice(0, 30);
+      const results = [];
+
+      // Fetch in batches of 5 to avoid overload
+      for (let i = 0; i < top.length; i += 5) {
+        const batch = top.slice(i, i + 5);
+        const fetches = batch.map(async (story) => {
+          try {
+            const resp = await fetch(story.site_url);
+            const html = await resp.text();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+
+            const commentEls = doc.querySelectorAll('.commtext');
+            const topComments = [];
+            for (let j = 0; j < Math.min(3, commentEls.length); j++) {
+              const text = commentEls[j].textContent.trim();
+              if (text) {
+                topComments.push(text);
+              }
+            }
+
+            const preview = topComments.join(' | ').substring(0, 500);
+            return { ...story, preview };
+          } catch (e) {
+            return { ...story, preview: '' };
+          }
+        });
+        const batchResults = await Promise.all(fetches);
+        results.push(...batchResults);
+      }
+
+      // Append remaining stories (beyond top 30) without comments
+      for (let i = 30; i < stories.length; i++) {
+        results.push({ ...stories[i], preview: '' });
+      }
+
+      return JSON.stringify(results);
+    })()
+
+steps:
+  - goto: "https://news.ycombinator.com"
+    wait_for: ".athing"
+    timeout_ms: 10000
+
+  - eval:
+      ref: extract_stories_with_comments
+      save_as: items
+
+  - output:
+      items: "{{ items }}"

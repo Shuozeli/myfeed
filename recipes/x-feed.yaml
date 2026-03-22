@@ -1,0 +1,78 @@
+name: "X Feed"
+description: "Extract tweets from X (Twitter) home timeline with full text and engagement metrics"
+version: 2
+type: query
+
+config:
+  default_timeout_ms: 20000
+  default_on_error: continue
+
+scripts:
+  extract_tweets: |
+    (() => {
+      const tweets = document.querySelectorAll('article[data-testid="tweet"]');
+      const results = [];
+      for (const tweet of tweets) {
+        try {
+          const textEl = tweet.querySelector('[data-testid="tweetText"]');
+          const text = textEl ? textEl.textContent.trim() : '';
+
+          const timeEl = tweet.querySelector('time');
+          const datetime = timeEl ? timeEl.getAttribute('datetime') : '';
+
+          const linkEl = tweet.querySelector('a[href*="/status/"]');
+          const href = linkEl ? linkEl.getAttribute('href') : '';
+          const url = href ? 'https://x.com' + href : '';
+
+          // Extract @handle from User-Name testid
+          const userNameEl = tweet.querySelector('[data-testid="User-Name"]');
+          let author = '';
+          if (userNameEl) {
+            const handleLink = userNameEl.querySelector('a[href^="/"]');
+            if (handleLink) {
+              const handleHref = handleLink.getAttribute('href');
+              author = handleHref ? '@' + handleHref.replace(/^\//, '') : '';
+            }
+          }
+
+          // Engagement metrics -- parse number from aria-label like "9252 Likes. Like"
+          const parseCount = (el) => {
+            if (!el) return 0;
+            const label = el.getAttribute('aria-label') || el.textContent || '';
+            const m = label.match(/^([\d,]+)/);
+            return m ? parseInt(m[1].replace(/,/g, '')) : 0;
+          };
+          const likes = parseCount(tweet.querySelector('[data-testid="like"]'));
+          const retweets = parseCount(tweet.querySelector('[data-testid="retweet"]'));
+          const replies = parseCount(tweet.querySelector('[data-testid="reply"]'));
+
+          const id = href || text.substring(0, 50);
+          const title = author ? `${author}: ${text.substring(0, 80)}` : text.substring(0, 80);
+          const preview = text.substring(0, 500);
+
+          if (title && id) {
+            results.push({
+              id, title, url, preview,
+              author, likes, retweets, replies, datetime
+            });
+          }
+        } catch (e) {
+          // skip malformed tweet
+        }
+      }
+      return JSON.stringify(results);
+    })()
+
+steps:
+  - goto: "https://x.com/home"
+    wait_for: "article"
+    timeout_ms: 20000
+
+  - wait: 3000
+
+  - eval:
+      ref: extract_tweets
+      save_as: items
+
+  - output:
+      items: "{{ items }}"

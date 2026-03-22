@@ -1,0 +1,80 @@
+name: "1point3acres Explore"
+description: "Explore 1point3acres HTML structure for feed extraction"
+version: 1
+type: query
+
+config:
+  default_timeout_ms: 20000
+
+scripts:
+  dump_structure: |
+    (() => {
+      const result = {
+        url: window.location.href,
+        title: document.title,
+        selectors_found: [],
+        sample_elements: [],
+        links: []
+      };
+
+      const checks = [
+        'article', '.post', '.thread', '.topic',
+        '.bbs_content', '.forum_list', '.threadlist',
+        '[class*="post"]', '[class*="thread"]', '[class*="topic"]',
+        '[class*="feed"]', '[class*="card"]', '[class*="item"]',
+        '[class*="list"]', 'table tr', 'li a',
+        '.content', '.main', '#content', '#main'
+      ];
+      for (const sel of checks) {
+        try {
+          const count = document.querySelectorAll(sel).length;
+          if (count > 0) result.selectors_found.push({ selector: sel, count });
+        } catch (e) {}
+      }
+
+      // Sample first few interesting elements
+      const candidates = document.querySelectorAll(
+        'article, [class*="post"], [class*="thread"], [class*="topic"], [class*="card"], [class*="item"], [class*="feed"], table tbody tr'
+      );
+      for (let i = 0; i < Math.min(candidates.length, 3); i++) {
+        const el = candidates[i];
+        result.sample_elements.push({
+          tag: el.tagName,
+          id: el.id || '',
+          classes: el.className || '',
+          attributes: [...el.attributes].map(a => `${a.name}=${a.value.substring(0, 50)}`).slice(0, 8),
+          text_preview: el.textContent.trim().substring(0, 200),
+          inner_html_preview: el.innerHTML.substring(0, 500)
+        });
+      }
+
+      // Collect navigation links to understand site structure
+      const navLinks = document.querySelectorAll('nav a, header a, .nav a, [class*="menu"] a');
+      for (const a of [...navLinks].slice(0, 15)) {
+        result.links.push({ text: a.textContent.trim(), href: a.href });
+      }
+
+      return JSON.stringify(result, null, 2);
+    })()
+
+  dump_full_html: |
+    document.documentElement.outerHTML
+
+steps:
+  - goto: "https://www.1point3acres.com/"
+    wait_for: "body"
+    timeout_ms: 20000
+
+  - wait: 3000
+
+  - eval:
+      ref: dump_structure
+      save_as: structure
+
+  - eval:
+      ref: dump_full_html
+      save_as: full_html
+
+  - output:
+      structure: "{{ structure }}"
+      full_html: "{{ full_html }}"

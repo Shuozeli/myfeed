@@ -1,0 +1,41 @@
+name: "Follow LinkedIn Company"
+version: 1
+type: mutation
+
+params:
+  url:
+    type: string
+    required: true
+
+config:
+  default_timeout_ms: 15000
+  default_on_error: continue
+
+scripts:
+  follow: |
+    (async () => {
+      await new Promise(r => setTimeout(r, 2000));
+      const btns = document.querySelectorAll('button');
+      for (const btn of btns) {
+        const text = btn.textContent.trim();
+        if (text === 'Follow' || text === '+ Follow') {
+          btn.click();
+          await new Promise(r => setTimeout(r, 1000));
+          return JSON.stringify({status: 'followed', page: document.title});
+        }
+      }
+      // Check if already following
+      for (const btn of btns) {
+        if (btn.textContent.trim() === 'Following') {
+          return JSON.stringify({status: 'already_following', page: document.title});
+        }
+      }
+      return JSON.stringify({status: 'no_follow_button', page: document.title});
+    })()
+
+steps:
+  - goto: "{{ url }}"
+    wait_for: "body"
+  - wait: 2000
+  - eval: { ref: follow, save_as: result }
+  - output: { result: "{{ result }}" }

@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package myfeed.v1;
+
+option java_package = "com.myfeed.v1";
+
+// A snapshot of one crawl cycle for a single site.
+message CrawlSnapshot {
+  string site = 1;
+  string crawled_at = 2;
+  repeated FeedItem items = 3;
+}
+
+// A single feed item with common fields + per-site payload.
+message FeedItem {
+  string id = 1;
+  string title = 2;
+  string url = 3;
+  string preview = 4;
+
+  oneof site_data {
+    HackerNewsData hackernews = 10;
+    RedditData reddit = 11;
+    OnePoint3AcresData one_point_3_acres = 12;
+    ZhihuData zhihu = 13;
+    XueqiuData xueqiu = 14;
+    LinkedInData linkedin = 15;
+    XData x = 16;
+  }
+}
+
+message HackerNewsData {
+  int32 score = 1;
+  int32 comments = 2;
+  string age = 3;
+  string site_url = 4; // the HN discussion URL (vs the linked article)
+}
+
+message RedditData {
+  string subreddit = 1;
+  int32 upvotes = 2;
+  int32 comments = 3;
+  string author = 4;
+}
+
+message OnePoint3AcresData {
+  string forum = 1;       // e.g. "求职", "移民"
+  string author = 2;
+  string post_content = 3; // full first-post text
+}
+
+message ZhihuData {
+  int32 upvotes = 1;
+  int32 answers = 2;
+  string author = 3;
+  string topic = 4;
+}
+
+message XueqiuData {
+  string author = 1;
+  int32 replies = 2;
+  int32 likes = 3;
+  string symbol = 4; // stock ticker if mentioned
+}
+
+message LinkedInData {
+  string author = 1;
+  int32 likes = 2;
+  int32 comments = 3;
+  string company = 4;
+}
+
+message XData {
+  string author = 1;
+  int32 likes = 2;
+  int32 retweets = 3;
+  int32 replies = 4;
+  string datetime = 5;
+}

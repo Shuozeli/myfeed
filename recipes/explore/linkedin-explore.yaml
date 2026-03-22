@@ -1,0 +1,52 @@
+name: "LinkedIn Explore"
+description: "Explore LinkedIn HTML structure for feed extraction"
+version: 1
+type: query
+
+config:
+  default_timeout_ms: 20000
+
+scripts:
+  dump_structure: |
+    (() => {
+      const result = {
+        url: window.location.href,
+        title: document.title,
+        selectors_found: [],
+        sample_elements: []
+      };
+
+      const checks = [
+        '.feed-shared-update-v2', '[data-urn*="activity"]',
+        '.occludable-update', 'div[data-id]',
+        '.feed-shared-text', '.update-components-text',
+        '.feed-shared-actor__name', 'article',
+        '[class*="feed"]', '[class*="post"]'
+      ];
+      for (const sel of checks) {
+        try {
+          const count = document.querySelectorAll(sel).length;
+          if (count > 0) result.selectors_found.push({ selector: sel, count });
+        } catch (e) {}
+      }
+
+      const candidates = document.querySelectorAll(
+        '.feed-shared-update-v2, [data-urn*="activity"], .occludable-update, article'
+      );
+      for (let i = 0; i < Math.min(candidates.length, 3); i++) {
+        const el = candidates[i];
+        result.sample_elements.push({
+          tag: el.tagName, id: el.id || '', classes: el.className || '',
+          text_preview: el.textContent.trim().substring(0, 200),
+          inner_html_preview: el.innerHTML.substring(0, 500)
+        });
+      }
+      return JSON.stringify(result, null, 2);
+    })()
+
+steps:
+  - goto: "https://www.linkedin.com/feed/"
+    wait_for: "body"
+  - wait: 5000
+  - eval: { ref: dump_structure, save_as: structure }
+  - output: { structure: "{{ structure }}" }

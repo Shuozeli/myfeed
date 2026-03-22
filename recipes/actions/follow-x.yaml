@@ -1,0 +1,43 @@
+name: "Follow X Account"
+version: 1
+type: mutation
+
+params:
+  url:
+    type: string
+    required: true
+
+config:
+  default_timeout_ms: 15000
+  default_on_error: continue
+
+scripts:
+  follow: |
+    (async () => {
+      await new Promise(r => setTimeout(r, 2000));
+      // X uses [data-testid="placementTracking"] with Follow/Following buttons
+      const followBtns = document.querySelectorAll('[data-testid$="-follow"], [aria-label*="Follow"]');
+      for (const btn of followBtns) {
+        const label = btn.getAttribute('aria-label') || btn.textContent.trim();
+        if (label.includes('Follow') && !label.includes('Following')) {
+          btn.click();
+          await new Promise(r => setTimeout(r, 1000));
+          return JSON.stringify({status: 'followed', page: document.title});
+        }
+      }
+      // Check if already following
+      const allBtns = document.querySelectorAll('[role="button"]');
+      for (const btn of allBtns) {
+        if (btn.textContent.trim() === 'Following') {
+          return JSON.stringify({status: 'already_following', page: document.title});
+        }
+      }
+      return JSON.stringify({status: 'no_follow_button', page: document.title});
+    })()
+
+steps:
+  - goto: "{{ url }}"
+    wait_for: "body"
+  - wait: 3000
+  - eval: { ref: follow, save_as: result }
+  - output: { result: "{{ result }}" }

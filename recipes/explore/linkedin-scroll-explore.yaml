@@ -1,0 +1,72 @@
+name: "LinkedIn Scroll Explore"
+version: 1
+type: query
+
+config:
+  default_timeout_ms: 30000
+
+scripts:
+  scroll_and_inspect: |
+    (async () => {
+      // Scroll down to trigger lazy loading
+      for (let i = 0; i < 5; i++) {
+        window.scrollBy(0, 800);
+        await new Promise(r => setTimeout(r, 1000));
+      }
+
+      const result = {
+        url: window.location.href,
+        body_length: document.body.innerHTML.length,
+        selectors: [],
+        feed_content: []
+      };
+
+      // Broad selector scan
+      const checks = [
+        '[data-urn]', '[data-id]', 'article',
+        '[class*="feed"]', '[class*="update"]', '[class*="post"]',
+        '[class*="share"]', '[class*="actor"]', '[class*="text"]',
+        '[class*="comment"]', '[class*="social"]', 'span[dir]',
+        'button', 'img[alt]', 'a[href*="/in/"]', 'a[href*="/posts/"]',
+        'div[data-urn*="activity"]', 'div[data-urn*="share"]'
+      ];
+      for (const sel of checks) {
+        try {
+          const c = document.querySelectorAll(sel).length;
+          if (c > 0) result.selectors.push({ sel, c });
+        } catch(e) {}
+      }
+
+      // Try to find any meaningful content blocks
+      const main = document.querySelector('main, [role="main"]');
+      if (main) {
+        // Look for any div with substantial text in the main area
+        const walker = document.createTreeWalker(main, NodeFilter.SHOW_ELEMENT);
+        let node;
+        const seen = new Set();
+        while ((node = walker.nextNode()) && result.feed_content.length < 8) {
+          const text = node.textContent.trim();
+          if (text.length > 50 && text.length < 5000 && !seen.has(text.substring(0, 50))) {
+            seen.add(text.substring(0, 50));
+            const isLeafy = node.children.length < 10;
+            if (isLeafy) {
+              result.feed_content.push({
+                tag: node.tagName,
+                classes: (node.className || '').substring(0, 100),
+                attrs: [...node.attributes].slice(0, 5).map(a => a.name),
+                text: text.substring(0, 200)
+              });
+            }
+          }
+        }
+      }
+
+      return JSON.stringify(result, null, 2);
+    })()
+
+steps:
+  - goto: "https://www.linkedin.com/feed/"
+    wait_for: "main"
+  - wait: 5000
+  - eval: { ref: scroll_and_inspect, save_as: structure }
+  - output: { structure: "{{ structure }}" }
