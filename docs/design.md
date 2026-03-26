@@ -73,11 +73,14 @@ Every feed recipe must output a JSON array in the `items` key:
 
 ## Phased Rollout
 
-| Phase | Scope | Verification |
-|-------|-------|--------------|
-| Dark launch | Reddit only, manual `myfeed once` | Check Telegram for correct posts |
-| Multi-site | All 4 sites enabled | Run explore recipes, validate selectors |
-| Polish | Add keyword filtering, digest mode, `list` command | User feedback |
+| Phase | Scope | Status |
+|-------|-------|--------|
+| Dark launch | Reddit + HN, manual `myfeed once` | Done |
+| Multi-site | Initial 7 sites verified against live Chrome | Done |
+| Snapshots | Protobuf-typed crawl snapshots + Atom feed | Done |
+| Agent digest | `myfeed dump` with tiered sharding + prompt templates | Done |
+| Polish | Keyword filtering, digest mode, dedup windows | Done |
+| Scale-out | 26 public + 6 private sites (32 total) | Done |
 
 ## Event Log
 

@@ -81,7 +81,7 @@ cp .env.example .env
 
 Edit `.env`:
 ```bash
-CDP_ENDPOINT=ws://localhost:9222
+CDP_ENDPOINT=http://localhost:9222
 DATABASE_URL=myfeed.db
 TELEGRAM_BOT_TOKEN=<your token>
 TELEGRAM_CHAT_ID=<your chat id>
@@ -288,20 +288,55 @@ ENABLED_SITES=hackernews,reddit
 ENABLED_SITES=hackernews,reddit,zhihu,x,linkedin,xueqiu,1point3acres
 ```
 
-### Customize Telegram Message Format
+### Filter Notifications by Keyword
 
-Edit `src/telegram.rs` `send_feed_item()`:
+Only get notified about items you care about. All items are still saved
+to the database for snapshots and agent digests.
 
-```rust
-pub async fn send_feed_item(&self, site: &str, title: &str, url: &str, preview: &str) -> ... {
-    let text = format!(
-        "<b>[{site}]</b> <a href=\"{url}\">{title}</a>\n{preview}"
-    );
-    self.send_message(&text).await
-}
+```bash
+# Only notify on AI, Rust, immigration, and interview topics
+FILTER_KEYWORDS=AI,rust,immigration,interview,tariff
+
+# Case-insensitive, matches against title and preview text
+# Unset or empty = no filter (notify on everything)
 ```
 
-You can add timestamps, change the layout, or add site-specific formatting.
+### Use Digest Mode
+
+Instead of one Telegram message per item, get a single summary message
+per site per crawl cycle:
+
+```bash
+DIGEST_MODE=true
+```
+
+Digest format:
+```
+[hackernews] 5 new items
+
+- Flash-MoE: Running a 397B Parameter Model on a Laptop
+- The Future of Version Control
+- ...
+```
+
+Set `DIGEST_MODE=false` (default) for individual messages.
+
+### Generate Atom Feed
+
+Serve your feed via any RSS reader:
+
+```bash
+FEED_OUTPUT_PATH=feed.xml
+FEED_ITEM_COUNT=100
+```
+
+After each crawl cycle, `feed.xml` is regenerated. Serve it with nginx,
+caddy, or `python -m http.server`.
+
+### Customize Telegram Message Format
+
+Edit `src/telegram.rs` `send_feed_item()` to change the per-item format,
+or edit `scheduler.rs` `format_digest()` to change the digest format.
 
 ### Query History
 
@@ -386,3 +421,57 @@ pwright script run recipes/actions/join-reddit.yaml \
 ```
 
 These use the same Chrome session with your logged-in cookies.
+
+---
+
+## Lab 6: AI Agent Digest
+
+Use an AI agent (Claude Code, Gemini CLI, etc.) to summarize your feeds.
+No LLM calls are baked into myfeed -- the agent reads the data and
+applies intelligence externally.
+
+### Step 1: Scan the index
+
+```bash
+myfeed dump --hours 24 --compact
+```
+
+This outputs a compact JSON index (~10 tokens per item) with `id`,
+`site`, `title`, `url`. The agent reads titles to decide what's
+interesting.
+
+### Step 2: Read details for selected items
+
+```bash
+myfeed dump --ids 42,55,78,91
+```
+
+Returns full `preview`, `raw_json`, and `created_at` for those items.
+
+### Step 3: Apply a prompt template
+
+Prompt templates are in `prompts/`:
+
+- `daily-digest.md` -- Top stories + topic clusters
+- `trending-topics.md` -- What's trending across sites
+- `tech-radar.md` -- Tech-focused summary
+
+The agent reads the template and the dump data, then produces the digest.
+
+### Example with Claude Code
+
+```
+You: Summarize my feeds from today
+
+Claude: [runs myfeed dump --hours 24 --compact]
+        [scans 200 titles, picks 15 interesting items]
+        [runs myfeed dump --ids 12,45,67,...]
+        [reads full content, produces summary]
+
+        Top Stories:
+        - Danone acquiring Huel for $1.2B (X, HN)
+        - 2026 tariffs costing US households $570/yr (1point3acres)
+        ...
+```
+
+See `docs/agent-digest-guide.md` for the full guide.

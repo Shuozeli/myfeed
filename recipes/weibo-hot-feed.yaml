@@ -1,0 +1,31 @@
+name: "Weibo Hot Search Feed"
+description: "Extract trending topics from Weibo hot search"
+version: 2
+type: query
+config:
+  default_timeout_ms: 20000
+  default_on_error: continue
+scripts:
+  extract: |
+    (() => {
+      const results = [];
+      const seen = new Set();
+      for (const a of document.querySelectorAll('a')) {
+        const href = a.getAttribute('href') || '';
+        const text = a.textContent.trim();
+        // Match Weibo search links (hashtag topics)
+        if (!href.includes('s.weibo.com/weibo') && !href.includes('s.weibo.com/realtime')) continue;
+        if (text.length < 3 || text.length > 100 || seen.has(text)) continue;
+        seen.add(text);
+        const url = href.startsWith('//') ? 'https:' + href : href;
+        const topic = text.replace(/^#|#$/g, '');
+        results.push({ id: topic, title: topic, url, preview: '' });
+      }
+      return JSON.stringify(results);
+    })()
+steps:
+  - goto: "https://weibo.com/hot/search"
+    wait_for: "body"
+  - wait: 5000
+  - eval: { ref: extract, save_as: items }
+  - output: { items: "{{ items }}" }

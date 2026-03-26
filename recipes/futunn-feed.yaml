@@ -1,0 +1,33 @@
+name: "Futunn Feed"
+description: "Extract financial news from Futunn (富途)"
+version: 2
+type: query
+config:
+  default_timeout_ms: 20000
+  default_on_error: continue
+scripts:
+  extract: |
+    (() => {
+      const results = [];
+      const seen = new Set();
+      for (const a of document.querySelectorAll('a')) {
+        const href = a.getAttribute('href') || '';
+        const text = a.textContent.trim();
+        if (text.length < 8 || text.length > 150 || seen.has(text)) continue;
+        const isNews = href.includes('/news-detail/') || href.includes('/news/') ||
+          href.includes('/post/') || href.match(/\/\d{10,}/);
+        if (!isNews) continue;
+        seen.add(text);
+        const url = href.startsWith('http') ? href : 'https://www.futunn.com' + href;
+        const idMatch = href.match(/(\d{8,})/);
+        const id = idMatch ? idMatch[1] : text.substring(0, 30);
+        results.push({ id, title: text, url, preview: '' });
+      }
+      return JSON.stringify(results);
+    })()
+steps:
+  - goto: "https://www.futunn.com/"
+    wait_for: "body"
+  - wait: 5000
+  - eval: { ref: extract, save_as: items }
+  - output: { items: "{{ items }}" }

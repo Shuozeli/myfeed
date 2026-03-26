@@ -1,0 +1,36 @@
+name: "Slashdot Feed"
+description: "Extract stories from Slashdot"
+version: 1
+type: query
+config:
+  default_timeout_ms: 20000
+  default_on_error: continue
+scripts:
+  extract: |
+    (() => {
+      const results = [];
+      const stories = document.querySelectorAll('article.fhitem, [class*="story"]');
+      for (const story of stories) {
+        try {
+          const titleEl = story.querySelector('.story-title a, h2 a, h3 a');
+          if (!titleEl) continue;
+          const title = titleEl.textContent.trim();
+          const href = titleEl.getAttribute('href') || '';
+          if (title.length < 5) continue;
+          const url = href.startsWith('http') ? href :
+            (href.startsWith('//') ? 'https:' + href : 'https://slashdot.org' + href);
+          const idMatch = href.match(/\/(\d{7,})/);
+          const id = idMatch ? idMatch[1] : title.substring(0, 40);
+          const bodyEl = story.querySelector('.body, .p, [class*="intro"]');
+          const preview = bodyEl ? bodyEl.textContent.trim().substring(0, 500) : '';
+          results.push({ id, title, url, preview });
+        } catch(e) {}
+      }
+      return JSON.stringify(results);
+    })()
+steps:
+  - goto: "https://slashdot.org/"
+    wait_for: "article, [class*='story']"
+  - wait: 2000
+  - eval: { ref: extract, save_as: items }
+  - output: { items: "{{ items }}" }

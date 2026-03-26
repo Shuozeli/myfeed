@@ -1,0 +1,33 @@
+name: "Seeking Alpha Feed"
+description: "Extract articles from Seeking Alpha"
+version: 1
+type: query
+config:
+  default_timeout_ms: 20000
+  default_on_error: continue
+scripts:
+  extract: |
+    (() => {
+      const results = [];
+      const seen = new Set();
+      for (const a of document.querySelectorAll('a')) {
+        const href = a.getAttribute('href') || '';
+        const text = a.textContent.trim();
+        if (text.length < 10 || text.length > 200 || seen.has(text)) continue;
+        const isArticle = href.includes('/article/') || href.includes('/news/') ||
+          href.match(/seekingalpha\.com\/\w+-\w+/);
+        if (!isArticle) continue;
+        seen.add(text);
+        const url = href.startsWith('http') ? href : 'https://seekingalpha.com' + href;
+        const idMatch = href.match(/\/([a-z0-9-]+)$/);
+        const id = idMatch ? idMatch[1] : text.substring(0, 40);
+        results.push({ id, title: text, url, preview: '' });
+      }
+      return JSON.stringify(results);
+    })()
+steps:
+  - goto: "https://seekingalpha.com/"
+    wait_for: "body"
+  - wait: 5000
+  - eval: { ref: extract, save_as: items }
+  - output: { items: "{{ items }}" }

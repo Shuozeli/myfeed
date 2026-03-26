@@ -1,0 +1,73 @@
+name: "Telegram Channel Feed"
+description: "Extract messages from any public Telegram channel web view"
+version: 1
+type: query
+
+params:
+  url:
+    type: string
+    required: false
+    default: "https://t.me/s/durov"
+
+config:
+  default_timeout_ms: 60000
+  default_on_error: continue
+
+scripts:
+  extract_messages: |
+    (() => {
+      const messageEls = document.querySelectorAll('.tgme_widget_message');
+      const results = [];
+
+      for (const msg of messageEls) {
+        try {
+          const postAttr = msg.getAttribute('data-post') || '';
+          const id = postAttr || '';
+          if (!id) continue;
+
+          const textEl = msg.querySelector('.tgme_widget_message_text');
+          const text = textEl ? textEl.textContent.trim() : '';
+          if (!text) continue;
+
+          const title = text.substring(0, 120);
+          const preview = text.substring(0, 500);
+
+          let url = '';
+          const linkEl = msg.querySelector('a.tgme_widget_message_date');
+          if (linkEl) {
+            url = linkEl.getAttribute('href') || '';
+          }
+          if (!url && postAttr) {
+            url = 'https://t.me/' + postAttr;
+          }
+
+          let date = '';
+          const dateEl = msg.querySelector('.tgme_widget_message_date time');
+          if (dateEl) {
+            date = dateEl.getAttribute('datetime') || dateEl.textContent.trim();
+          }
+
+          let author = '';
+          const authorEl = msg.querySelector('.tgme_widget_message_owner_name');
+          if (authorEl) {
+            author = authorEl.textContent.trim();
+          }
+
+          results.push({ id, title, url, preview, date, author });
+        } catch (e) {}
+      }
+
+      return JSON.stringify(results);
+    })()
+
+steps:
+  - goto: "{{ url }}"
+    wait_for: ".tgme_widget_message"
+    timeout_ms: 10000
+
+  - eval:
+      ref: extract_messages
+      save_as: items
+
+  - output:
+      items: "{{ items }}"

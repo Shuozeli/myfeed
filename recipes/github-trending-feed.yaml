@@ -1,0 +1,71 @@
+name: "GitHub Trending Feed"
+description: "Extract trending repositories from GitHub with stars, language, and descriptions"
+version: 1
+type: query
+
+config:
+  default_timeout_ms: 60000
+  default_on_error: continue
+
+scripts:
+  extract_trending: |
+    (() => {
+      const articles = document.querySelectorAll('article');
+      const results = [];
+
+      for (const article of articles) {
+        try {
+          const linkEl = article.querySelector('h2 a');
+          if (!linkEl) continue;
+
+          const href = linkEl.getAttribute('href') || '';
+          const repoName = href.replace(/^\//, '').trim();
+          const title = repoName;
+          const url = 'https://github.com' + href;
+
+          const descEl = article.querySelector('p');
+          const preview = descEl ? descEl.textContent.trim() : '';
+
+          let stars = '';
+          const spans = article.querySelectorAll('span');
+          for (const span of spans) {
+            const text = span.textContent.trim();
+            if (text.includes('stars today') || text.includes('stars this')) {
+              stars = text;
+              break;
+            }
+          }
+
+          let language = '';
+          const langEl = article.querySelector('[itemprop="programmingLanguage"]');
+          if (langEl) {
+            language = langEl.textContent.trim();
+          }
+
+          if (repoName) {
+            results.push({
+              id: repoName,
+              title,
+              url,
+              preview,
+              stars,
+              language
+            });
+          }
+        } catch (e) {}
+      }
+
+      return JSON.stringify(results);
+    })()
+
+steps:
+  - goto: "https://github.com/trending"
+    wait_for: "article"
+    timeout_ms: 10000
+
+  - eval:
+      ref: extract_trending
+      save_as: items
+
+  - output:
+      items: "{{ items }}"

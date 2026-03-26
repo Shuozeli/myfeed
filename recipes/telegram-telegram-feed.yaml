@@ -1,0 +1,43 @@
+name: "Telegram @telegram"
+version: 1
+type: query
+config:
+  default_timeout_ms: 20000
+  default_on_error: continue
+scripts:
+  extract: |
+    (() => {
+      const results = [];
+      const msgs = document.querySelectorAll('.tgme_widget_message');
+      for (const msg of msgs) {
+        try {
+          const postAttr = msg.getAttribute('data-post') || '';
+          if (!postAttr) continue;
+          const textEl = msg.querySelector('.tgme_widget_message_text');
+          const text = textEl ? textEl.textContent.trim() : '';
+          if (!text) continue;
+          let url = '';
+          const linkEl = msg.querySelector('a.tgme_widget_message_date');
+          if (linkEl) url = linkEl.getAttribute('href') || '';
+          if (!url) url = 'https://t.me/' + postAttr;
+          let date = '';
+          const dateEl = msg.querySelector('.tgme_widget_message_date time');
+          if (dateEl) date = dateEl.getAttribute('datetime') || '';
+          results.push({
+            id: postAttr,
+            title: text.substring(0, 120),
+            url,
+            preview: text.substring(0, 500),
+            date
+          });
+        } catch(e) {}
+      }
+      return JSON.stringify(results);
+    })()
+steps:
+  - goto: "https://t.me/s/telegram"
+    wait_for: ".tgme_widget_message"
+    timeout_ms: 15000
+  - wait: 2000
+  - eval: { ref: extract, save_as: items }
+  - output: { items: "{{ items }}" }

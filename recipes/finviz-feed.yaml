@@ -1,0 +1,34 @@
+name: "Finviz News Feed"
+description: "Extract market news headlines from Finviz"
+version: 1
+type: query
+config:
+  default_timeout_ms: 20000
+  default_on_error: continue
+scripts:
+  extract: |
+    (() => {
+      const results = [];
+      const seen = new Set();
+      const rows = document.querySelectorAll('table tr, [class*="news"] a, .nn-tab-link');
+      for (const row of rows) {
+        const links = row.tagName === 'A' ? [row] : row.querySelectorAll('a');
+        for (const a of links) {
+          const text = a.textContent.trim();
+          const href = a.getAttribute('href') || '';
+          if (text.length < 15 || text.length > 200 || seen.has(text)) continue;
+          if (!href.startsWith('http')) continue;
+          if (href.includes('finviz.com')) continue;
+          seen.add(text);
+          const id = text.substring(0, 50);
+          results.push({ id, title: text, url: href, preview: '' });
+        }
+      }
+      return JSON.stringify(results);
+    })()
+steps:
+  - goto: "https://finviz.com/news.ashx"
+    wait_for: "body"
+  - wait: 3000
+  - eval: { ref: extract, save_as: items }
+  - output: { items: "{{ items }}" }

@@ -9,7 +9,7 @@ use tracing::{error, info};
 
 use crate::proto;
 
-/// Run a feed recipe against a browser page and return typed FeedItems.
+/// Run a feed recipe against a browser page and return typed `FeedItem`s.
 pub async fn run_recipe(
     page: &Page,
     site: &str,
@@ -59,7 +59,7 @@ pub async fn run_recipe(
     Ok(items)
 }
 
-/// Convert a raw JSON value from a recipe into a typed FeedItem proto.
+/// Convert a raw JSON value from a recipe into a typed `FeedItem` proto.
 fn value_to_feed_item(site: &str, v: &serde_json::Value) -> Option<proto::FeedItem> {
     let id = v.get("id").and_then(|v| v.as_str())?.to_string();
     let title = v.get("title").and_then(|v| v.as_str())?.to_string();
@@ -138,24 +138,31 @@ fn str_field(v: &serde_json::Value, key: &str) -> String {
         .to_string()
 }
 
+#[allow(clippy::cast_possible_truncation)] // proto fields are i32; JSON values fit
 fn int_field(v: &serde_json::Value, key: &str) -> i32 {
-    v.get(key).and_then(|v| v.as_i64()).unwrap_or(0) as i32
+    v.get(key).and_then(serde_json::Value::as_i64).unwrap_or(0) as i32
 }
 
 /// Resolve the recipe file path for a given site name.
-/// Uses RECIPES_DIR env var if set, otherwise resolves relative to the executable.
+/// Checks private recipes first (recipes/private/), then public (recipes/).
+/// Uses `RECIPES_DIR` env var if set, otherwise resolves relative to the executable.
 pub fn recipe_path(site: &str) -> PathBuf {
     let base = match std::env::var("RECIPES_DIR") {
         Ok(dir) => PathBuf::from(dir),
-        Err(_) => {
-            // Fall back to recipes/ relative to the executable's directory
-            std::env::current_exe()
-                .ok()
-                .and_then(|p| p.parent().map(|d| d.join("recipes")))
-                .unwrap_or_else(|| PathBuf::from("recipes"))
-        }
+        Err(_) => std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.join("recipes")))
+            .unwrap_or_else(|| PathBuf::from("recipes")),
     };
-    base.join(format!("{site}-feed.yaml"))
+    let filename = format!("{site}-feed.yaml");
+
+    // Check private recipes first
+    let private_path = base.join("private").join(&filename);
+    if private_path.exists() {
+        return private_path;
+    }
+
+    base.join(filename)
 }
 
 #[derive(Debug)]
@@ -174,3 +181,74 @@ impl std::fmt::Display for CrawlError {
 }
 
 impl std::error::Error for CrawlError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn str_field_extracts_string() {
+        let v = serde_json::json!({"name": "hello", "count": 42});
+        assert_eq!(str_field(&v, "name"), "hello");
+        assert_eq!(str_field(&v, "missing"), "");
+        assert_eq!(str_field(&v, "count"), ""); // not a string
+    }
+
+    #[test]
+    fn int_field_extracts_number() {
+        let v = serde_json::json!({"score": 142, "name": "test"});
+        assert_eq!(int_field(&v, "score"), 142);
+        assert_eq!(int_field(&v, "missing"), 0);
+        assert_eq!(int_field(&v, "name"), 0); // not a number
+    }
+
+    #[test]
+    fn value_to_feed_item_hackernews() {
+        let v = serde_json::json!({
+            "id": "123",
+            "title": "Test Story",
+            "url": "https://example.com",
+            "preview": "Some preview",
+            "score": 200,
+            "comments": 50,
+            "age": "3 hours ago",
+            "site_url": "https://news.ycombinator.com/item?id=123"
+        });
+        let item = value_to_feed_item("hackernews", &v).unwrap();
+        assert_eq!(item.id, "123");
+        assert_eq!(item.title, "Test Story");
+        assert!(item.site_data.is_some());
+        match item.site_data.unwrap() {
+            proto::feed_item::SiteData::Hackernews(hn) => {
+                assert_eq!(hn.score, 200);
+                assert_eq!(hn.comments, 50);
+            }
+            _ => panic!("expected HackerNewsData"),
+        }
+    }
+
+    #[test]
+    fn value_to_feed_item_unknown_site_still_works() {
+        let v = serde_json::json!({
+            "id": "1",
+            "title": "Test",
+            "url": "https://example.com",
+            "preview": ""
+        });
+        let item = value_to_feed_item("unknownsite", &v).unwrap();
+        assert_eq!(item.id, "1");
+        assert!(item.site_data.is_none());
+    }
+
+    #[test]
+    fn value_to_feed_item_missing_id_returns_none() {
+        let v = serde_json::json!({"title": "no id"});
+        assert!(value_to_feed_item("hackernews", &v).is_none());
+    }
+
+    #[test]
+    fn recipe_path_uses_site_name() {
+        let path = recipe_path("hackernews");
+        assert!(path.to_str().unwrap().contains("hackernews-feed.yaml"));
+    }
+}

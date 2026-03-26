@@ -3,7 +3,7 @@
 ## Overview
 
 myfeed is a personal feed aggregator that uses browser automation (via pwright)
-to crawl social media sites and deliver updates via Telegram.
+to crawl social media sites and deliver updates via Telegram and Atom feed.
 
 ```
                      +------------------+
@@ -26,68 +26,119 @@ to crawl social media sites and deliver updates via Telegram.
                      |   crawler.rs     |
                      +--------+---------+
                               |
-               +--------------+--------------+
-               |                             |
-      +--------+--------+          +--------+--------+
-      |   SQLite (diesel)|         |  Telegram Bot   |
-      |   dedup + events |         |  notifications  |
-      +-----------------+          +-----------------+
+          +-------------------+-------------------+
+          |                   |                   |
+ +--------+--------+ +-------+--------+ +--------+--------+
+ |   SQLite (diesel)| | Telegram Bot   | |   Atom Feed     |
+ | dedup + events  | | notifications  | |   feed.xml      |
+ | + snapshots     | +----------------+ +-----------------+
+ +-----------------+
+          |
+ +--------+--------+
+ | myfeed dump     |
+ | (agent-readable |
+ |  JSON output)   |
+ +-----------------+
 ```
 
 ## Components
 
 ### Config (`config.rs`)
 Reads all settings from environment variables. Fails immediately on any
-missing required variable (fail-fast, no defaults).
+missing required variable (fail-fast). Optional settings: `FEED_OUTPUT_PATH`,
+`FEED_ITEM_COUNT`, `FILTER_KEYWORDS`, `DIGEST_MODE`, `DEDUP_WINDOW_HOURS`,
+`DEDUP_OVERRIDES`.
 
 ### Crawler (`crawler.rs`)
 - Loads pwright recipe YAML files
 - Runs them against a browser Page via `pwright_script::executor::execute()`
-- Parses the recipe's output steps into `CrawledItem` structs
-- Recipes output items in a standardized format: `{id, title, url, preview}`
+- Parses output into `proto::FeedItem` with typed per-site payloads (oneof)
+- Unknown sites produce a warning, not an error
 
 ### Scheduler (`scheduler.rs`)
 - Runs the crawl loop on a configurable interval
-- For each enabled site: connect to Chrome, run recipe, dedup, notify
-- Logs events (start, complete, error) to the event_log table
+- Retry: each site crawl retries up to 3 times with 5s delay
+- Keyword filter: only matching items go to Telegram (all saved to DB)
+- Digest mode: batch new items into one Telegram message per site
+- Tab lifecycle safety: `crawl_with_page` ensures tab always closes on error
+- After all sites: generates Atom feed if configured
+- Event log retention: deletes entries older than 30 days at cycle start
+- Uses `db_blocking()` helper for sync diesel calls in async context
 
 ### Database (`db.rs`)
-- SQLite via diesel (sync, wrapped in Mutex for thread safety)
-- `feed_items` table: dedup by `(site, external_id)` unique constraint
-- `event_log` table: time-series events for debugging
-- All queries run inside transactions
+- SQLite via diesel, Mutex-wrapped for thread safety
+- `feed_items`: dedup via `INSERT OR IGNORE` on `(site, external_id)` unique constraint
+- `crawl_snapshots`: full parsed JSON saved per site per crawl cycle
+- `event_log`: time-series events for debugging
+- All queries wrapped in transactions
+
+### Feed (`feed.rs`)
+- Generates Atom 1.0 XML from recent `feed_items`
+- Written to disk after each crawl cycle (if `FEED_OUTPUT_PATH` is set)
+- No dependencies -- built with `format!` and manual XML escaping
 
 ### Telegram (`telegram.rs`)
-- Simple HTTP client wrapping the Telegram Bot sendMessage API
-- Formats feed items as HTML messages with title, link, preview
+- Channel-based message queue: `TelegramSender` enqueues, `TelegramConsumer` drains
+- Consumer rate: 1 message per second, with 429 `retry_after` backoff
+- Formats items as HTML with proper escaping
+- 30-second HTTP timeout, errors logged but don't block crawling
+
+### Protobuf Schema (`proto/myfeed.proto`)
+- `CrawlSnapshot`: site + timestamp + items array
+- `FeedItem`: common fields (id, title, url, preview) + `oneof site_data`
+- Per-site types: HackerNewsData, RedditData, ZhihuData, XData,
+  LinkedInData, XueqiuData, OnePoint3AcresData
 
 ### Recipes (`recipes/`)
-- pwright YAML scripts that navigate to sites and extract posts
-- `explore/` subdirectory for HTML structure discovery
-- Feed recipes output items via JS `eval` steps that return JSON arrays
-- Each item must have: `id` (dedup key), `title`, `url`, `preview`
+- `<site>-feed.yaml`: feed extraction (26 public + 6 private, 32 total)
+- `explore/`: HTML structure discovery (run before writing feed recipes)
+- `actions/`: follow/join recipes (LinkedIn, X, Reddit)
+
+### Prompt Templates (`prompts/`)
+- Pre-written prompts for AI agents to produce digests
+- daily-digest, trending-topics, tech-radar
 
 ## Data Flow
 
-1. Scheduler timer fires
-2. For each enabled site:
-   a. Open a new Chrome tab via CDP
-   b. Load and run the site's recipe YAML
-   c. Recipe navigates to the site, waits for content, runs JS extraction
-   d. Crawler parses recipe output into CrawledItem structs
-   e. Check each item against SQLite (dedup by site + external_id)
-   f. New items: insert into DB + send to Telegram
-   g. Close the tab
-3. Log completion event, sleep until next cycle
+1. Scheduler timer fires (default 30min)
+2. Cleanup event log entries older than 30 days
+3. For each enabled site (retry up to 3 times, 5s delay):
+   a. Open a new Chrome tab via CDP (`connect_http`)
+   b. Run the site's recipe YAML
+   c. Crawler parses output into typed `proto::FeedItem`
+   d. Save full snapshot to `crawl_snapshots`
+   e. Atomic dedup: `INSERT OR IGNORE` into `feed_items`
+   f. Apply keyword filter (all items saved, only matching notified)
+   g. Send to Telegram (digest or per-item, depending on config)
+   h. Close the tab (always, even on error)
+4. Generate Atom feed (if configured)
+5. Log completion event, sleep until next cycle
+
+## AI Agent Integration
+
+Agents read feed data via `myfeed dump` (not embedded LLM calls):
+
+```
+Agent                          myfeed
+  |                              |
+  |-- dump --compact --hours 24 ->|  (index: ~10 tokens/item)
+  |<-- JSON with id/title/url ---|
+  |                              |
+  |-- dump --ids 42,55,78 ------>|  (detail: full preview + raw_json)
+  |<-- JSON with full content ---|
+  |                              |
+  |-- (apply prompt template) ---|
+  |-- (produce digest) ---------|
+```
+
+See `docs/agent-digest-guide.md` for the full workflow.
 
 ## Design Decisions
 
-- **Browser-only, no APIs**: Every site is crawled via Chrome. This makes myfeed
-  work with any website, including those behind login walls or without public APIs.
-- **Recipe-based extraction**: Site-specific logic lives in YAML recipes, not Rust
-  code. Adding a new site requires zero code changes.
-- **Login-once model**: Chrome's user data directory preserves session cookies
-  between runs. Users log in once, crawls reuse the session.
-- **SQLite + diesel**: Lightweight, no external DB server needed. The Mutex-wrapped
-  connection is fine for the single-writer workload (one crawl at a time).
-- **Telegram for delivery**: Simple, works on mobile, supports rich formatting.
+- **Browser-only, no APIs**: Works with any website, including login-gated content.
+- **Recipe-based extraction**: Site logic in YAML, not Rust. Zero code changes to add a site.
+- **Login-once model**: Chrome profile preserves session cookies between runs.
+- **SQLite + diesel**: Lightweight, no external DB server, single-file backup.
+- **Protobuf schema**: Typed per-site payloads with oneof. JSON-serialized for SQLite storage.
+- **Atom feed**: Static file output, serve however you want (nginx, etc.).
+- **Agent-readable, not agent-embedded**: No LLM calls in Rust. Agents read via `dump` command.

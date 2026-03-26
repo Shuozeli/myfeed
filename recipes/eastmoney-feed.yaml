@@ -1,0 +1,35 @@
+name: "East Money Feed"
+description: "Extract trending stock discussions from East Money (股吧)"
+version: 2
+type: query
+config:
+  default_timeout_ms: 20000
+  default_on_error: continue
+scripts:
+  extract: |
+    (() => {
+      const results = [];
+      const seen = new Set();
+      for (const a of document.querySelectorAll('a')) {
+        const href = a.getAttribute('href') || '';
+        const text = a.textContent.trim();
+        // Match topic links and stock forum links
+        if (text.length < 5 || text.length > 150 || seen.has(text)) continue;
+        const isTopicLink = href.includes('gubatopic.eastmoney.com') ||
+          href.includes('caifuhao.eastmoney.com') ||
+          href.match(/guba\.eastmoney\.com\/news,\w+,\d+/);
+        if (!isTopicLink) continue;
+        seen.add(text);
+        const url = href.startsWith('//') ? 'https:' + href : href;
+        const idMatch = href.match(/(\d{10,})/);
+        const id = idMatch ? idMatch[1] : text.substring(0, 30);
+        results.push({ id, title: text.replace(/^#|#$/g, ''), url, preview: '' });
+      }
+      return JSON.stringify(results);
+    })()
+steps:
+  - goto: "https://guba.eastmoney.com/"
+    wait_for: "body"
+  - wait: 3000
+  - eval: { ref: extract, save_as: items }
+  - output: { items: "{{ items }}" }

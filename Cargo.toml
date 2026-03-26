@@ -3,6 +3,8 @@ name = "myfeed"
 version = "0.1.0"
 edition = "2024"
 description = "Personal feed bot powered by pwright browser automation"
+license = "MIT"
+repository = "https://github.com/Shuozeli/myfeed"
 
 [dependencies]
 # Browser automation

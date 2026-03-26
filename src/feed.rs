@@ -1,18 +1,19 @@
+use std::fmt::Write;
+
 use crate::db::FeedItem;
 
 /// Generate an Atom 1.0 XML feed from a list of feed items.
 pub fn generate_atom(items: &[FeedItem]) -> String {
     let updated = items
         .first()
-        .map(|i| i.created_at.as_str())
-        .unwrap_or("1970-01-01T00:00:00Z");
+        .map_or("1970-01-01T00:00:00Z", |i| i.created_at.as_str());
 
     let mut xml = String::with_capacity(4096);
     xml.push_str("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
     xml.push_str("<feed xmlns=\"http://www.w3.org/2005/Atom\">\n");
     xml.push_str("  <title>myfeed</title>\n");
     xml.push_str("  <id>urn:myfeed</id>\n");
-    xml.push_str(&format!("  <updated>{updated}</updated>\n"));
+    let _ = writeln!(xml, "  <updated>{updated}</updated>");
 
     for item in items {
         let title = escape_xml(&format!("[{}] {}", item.site, item.title));
@@ -23,12 +24,13 @@ pub fn generate_atom(items: &[FeedItem]) -> String {
         let site = escape_xml(&item.site);
 
         xml.push_str("  <entry>\n");
-        xml.push_str(&format!("    <title>{title}</title>\n"));
-        xml.push_str(&format!("    <link href=\"{url}\" />\n"));
-        xml.push_str(&format!("    <id>{id}</id>\n"));
-        xml.push_str(&format!("    <published>{published}</published>\n"));
-        xml.push_str(&format!("    <content type=\"text\">{content}</content>\n"));
-        xml.push_str(&format!("    <category term=\"{site}\" />\n"));
+        let _ = writeln!(xml, "    <title>{title}</title>");
+        let _ = writeln!(xml, "    <link href=\"{url}\" />");
+        let _ = writeln!(xml, "    <id>{id}</id>");
+        let _ = writeln!(xml, "    <published>{published}</published>");
+        let _ = writeln!(xml, "    <updated>{published}</updated>");
+        let _ = writeln!(xml, "    <content type=\"text\">{content}</content>");
+        let _ = writeln!(xml, "    <category term=\"{site}\" />");
         xml.push_str("  </entry>\n");
     }
 
@@ -37,10 +39,7 @@ pub fn generate_atom(items: &[FeedItem]) -> String {
 }
 
 fn escape_xml(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
+    crate::telegram::escape_html(s).replace('"', "&quot;")
 }
 
 #[cfg(test)]

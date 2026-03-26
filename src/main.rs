@@ -61,6 +61,25 @@ enum Command {
         id: i32,
     },
 
+    /// Dump recent feed items as JSON for agent consumption.
+    Dump {
+        /// Hours of history to include (default: 24).
+        #[arg(long, default_value = "24")]
+        hours: u64,
+
+        /// Filter by site (repeatable).
+        #[arg(long)]
+        site: Vec<String>,
+
+        /// Compact mode: title + url only, no preview (default for index).
+        #[arg(long)]
+        compact: bool,
+
+        /// Fetch full details for specific item IDs (comma-separated).
+        #[arg(long, value_delimiter = ',')]
+        ids: Vec<i32>,
+    },
+
     /// Show recent events from the event log.
     Events {
         /// Number of recent events to show.
@@ -86,23 +105,29 @@ async fn main() {
     let db = Arc::new(db::FeedDb::new(&config.database_url));
     db.migrate();
 
-    let bot = Arc::new(telegram::TelegramBot::new(
+    let (sender, consumer) = telegram::create_telegram_channel(
         config.telegram_bot_token.clone(),
         config.telegram_chat_id.clone(),
-    ));
+    );
+    let sender = Arc::new(sender);
 
     match cli.command {
         Command::Run => {
             info!("starting myfeed daemon");
-            scheduler::run(config, db, bot).await;
+            // Spawn the telegram consumer (drains queue at 1 msg/sec)
+            tokio::spawn(consumer.run());
+            scheduler::run(config, db, sender).await;
         }
         Command::Once => {
             info!("running single crawl cycle");
+            tokio::spawn(consumer.run());
             for site in &config.enabled_sites {
-                if let Err(e) = scheduler::crawl_site(&config, &db, &bot, site).await {
+                if let Err(e) = scheduler::crawl_site(&config, &db, &sender, site).await {
                     tracing::error!(site, error = %e, "crawl failed");
                 }
             }
+            // Wait a bit for queued messages to drain
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
             info!("single crawl cycle complete");
         }
         Command::Login { site } => {
@@ -117,16 +142,23 @@ async fn main() {
                 "1point3acres" => {
                     "https://www.1point3acres.com/bbs/member.php?mod=logging&action=login"
                 }
+                "wsj" => "https://accounts.wsj.com/login",
+                "nyt" => "https://myaccount.nytimes.com/auth/login",
+                "businessinsider" => "https://www.businessinsider.com/login",
+                "cls" => "https://www.cls.cn",
+                "peoplesdaily" => "https://paper.people.com.cn",
+                "latepost" => "https://www.latepost.com",
                 other => {
                     eprintln!("unknown site: {other}");
                     eprintln!(
-                        "supported: reddit, zhihu, xueqiu, x, linkedin, hackernews, 1point3acres"
+                        "supported: reddit, zhihu, xueqiu, x, linkedin, hackernews, \
+                         1point3acres, wsj, nyt, businessinsider, cls, peoplesdaily, latepost"
                     );
                     std::process::exit(1);
                 }
             };
 
-            let browser = pwright_bridge::Browser::connect(config.browser_config())
+            let browser = pwright_bridge::Browser::connect_http(&config.cdp_endpoint)
                 .await
                 .expect("failed to connect to Chrome");
             let tab = browser.new_tab(url).await.expect("failed to open tab");
@@ -136,7 +168,11 @@ async fn main() {
             println!("Your session cookies will be preserved for future crawls.");
 
             let mut input = String::new();
-            std::io::stdin().read_line(&mut input).ok();
+            if let Err(e) = std::io::stdin().read_line(&mut input) {
+                eprintln!("failed to read from stdin: {e}");
+                eprintln!("run this command in an interactive terminal");
+                std::process::exit(1);
+            }
 
             info!(site, "login session established");
             let _ = tab.close().await;
@@ -146,8 +182,8 @@ async fn main() {
                 .recent_items(site.as_deref(), limit)
                 .expect("failed to fetch items");
             for item in &items {
-                let preview = if item.preview.len() > 60 {
-                    format!("{}...", &item.preview[..60])
+                let preview = if item.preview.chars().count() > 60 {
+                    format!("{}...", item.preview.chars().take(60).collect::<String>())
                 } else {
                     item.preview.clone()
                 };
@@ -197,6 +233,12 @@ async fn main() {
                 None => println!("snapshot #{id} not found"),
             }
         }
+        Command::Dump {
+            hours,
+            site,
+            compact,
+            ids,
+        } => handle_dump(&db, hours, &site, compact, &ids),
         Command::Events { limit } => {
             let events = db.recent_events(limit).expect("failed to fetch events");
             for event in &events {
@@ -210,4 +252,79 @@ async fn main() {
             }
         }
     }
+}
+
+/// Handle the `dump` subcommand: output feed items as JSON for agent consumption.
+fn handle_dump(db: &db::FeedDb, hours: u64, sites: &[String], compact: bool, ids: &[i32]) {
+    // Mode 1: Fetch specific items by ID (full details)
+    if !ids.is_empty() {
+        let items = db.items_by_ids(ids).expect("failed to fetch items");
+        let items_json: Vec<serde_json::Value> = items
+            .iter()
+            .map(|item| {
+                serde_json::json!({
+                    "id": item.id,
+                    "site": item.site,
+                    "title": item.title,
+                    "url": item.url,
+                    "preview": item.preview,
+                    "raw_json": item.raw_json,
+                    "created_at": item.created_at,
+                })
+            })
+            .collect();
+        let output = serde_json::json!({
+            "mode": "detail",
+            "total_items": items.len(),
+            "items": items_json,
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&output).expect("JSON serialization is infallible")
+        );
+        return;
+    }
+
+    // Mode 2: Time-range index (compact by default)
+    #[allow(clippy::cast_possible_wrap)] // hours is small (< 1000)
+    let since = chrono::Utc::now() - chrono::Duration::hours(hours as i64);
+    let since_str = since.to_rfc3339();
+    let items = db
+        .items_since(&since_str, sites)
+        .expect("failed to fetch items");
+
+    let mut site_counts = std::collections::HashMap::<&str, usize>::new();
+    for item in &items {
+        *site_counts.entry(&item.site).or_default() += 1;
+    }
+
+    let items_json: Vec<serde_json::Value> = items
+        .iter()
+        .map(|item| {
+            let mut obj = serde_json::json!({
+                "id": item.id,
+                "site": item.site,
+                "title": item.title,
+                "url": item.url,
+            });
+            if !compact {
+                obj["preview"] = serde_json::json!(item.preview);
+                obj["created_at"] = serde_json::json!(item.created_at);
+            }
+            obj
+        })
+        .collect();
+
+    let output = serde_json::json!({
+        "mode": if compact { "index" } else { "full" },
+        "period": format!("{} to {}", since_str, chrono::Utc::now().to_rfc3339()),
+        "total_items": items.len(),
+        "sites": site_counts,
+        "items": items_json,
+    });
+
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&output).expect("JSON serialization is infallible")
+    );
 }

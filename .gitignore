@@ -4,4 +4,5 @@
 *.swo
 *.db
 docs/private/
+recipes/private/
 .pwright/

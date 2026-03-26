@@ -1,0 +1,90 @@
+name: New Site Recipe Request
+description: Request a new site to be supported by myfeed
+title: "[Recipe] Add support for <site name>"
+labels: ["recipe", "enhancement"]
+body:
+  - type: input
+    id: site_name
+    attributes:
+      label: Site Name
+      description: Name of the site (e.g., "GitHub Trending")
+      placeholder: "Site Name"
+    validations:
+      required: true
+
+  - type: input
+    id: site_url
+    attributes:
+      label: Site URL
+      description: URL of the page to crawl
+      placeholder: "https://example.com/feed"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - Tech / Engineering
+        - Finance / Markets
+        - Chinese-language News
+        - General / Aggregators
+        - Niche / High-signal
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: login_required
+    attributes:
+      label: Login Required?
+      description: Does the feed page require authentication to view?
+      options:
+        - "No - content is publicly visible"
+        - "Yes - login required to see the feed"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: content_access
+    attributes:
+      label: Content Access
+      description: Is the content freely accessible?
+      options:
+        - "Fully public - no restrictions"
+        - "Partially public - some content is free, some paywalled"
+        - "Login-gated - free account required but content is free"
+    validations:
+      required: true
+
+  - type: textarea
+    id: feed_description
+    attributes:
+      label: What to Extract
+      description: |
+        Describe what items should be extracted from the page.
+        Examples: "Top posts from the homepage", "Trending repositories list",
+        "Hot search terms from the sidebar"
+      placeholder: "Extract the top 20 posts from the front page, including title, URL, and preview text."
+    validations:
+      required: true
+
+  - type: textarea
+    id: rss_alternative
+    attributes:
+      label: Why Not RSS?
+      description: |
+        Briefly explain why RSS/Atom is not a viable alternative for this site.
+        Examples: "No RSS feed exists", "RSS only covers blog posts, not the trending page"
+      placeholder: "No RSS feed available for this page."
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional Context
+      description: Any other details (sample items, DOM structure notes, related sites already supported)
+    validations:
+      required: false
