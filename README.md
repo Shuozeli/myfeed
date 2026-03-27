@@ -124,7 +124,7 @@ Built on [pwright](https://github.com/shuozeli/pwright) (Chrome CDP bridge + rec
 
 ## Demo
 
-We run myfeed on a home server crawling 32 sites every 30 minutes (the 23 public recipes above plus private recipes for news sites). A full cycle takes ~6 minutes sequentially and typically finds 50-150 new items depending on time of day.
+We run myfeed on a home server crawling every 30 minutes. A full cycle takes ~5 minutes and typically finds 50-150 new items. Here's a real 12-hour snapshot: [demo-snapshot.md](docs/demo-snapshot.md) -- 1,400+ items across 20 sites, all from the public recipes in this repo.
 
 ## License
 
