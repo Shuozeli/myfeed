@@ -8,82 +8,84 @@ config:
   default_on_error: continue
 
 scripts:
-  extract_topics: |
-    (async () => {
-      const topicEls = document.querySelectorAll('[class*="topic"]');
-      const stories = [];
+  extract_topics:
+    async: true
+    body: |
+      (async () => {
+        const topicEls = document.querySelectorAll('[class*="topic"]');
+        const stories = [];
 
-      for (const el of topicEls) {
-        try {
-          const linkEl = el.querySelector('a[href*="/t/"]');
-          if (!linkEl) continue;
-
-          const href = linkEl.getAttribute('href') || '';
-          const match = href.match(/\/t\/(\d+)/);
-          if (!match) continue;
-
-          const id = match[1];
-          const title = linkEl.textContent.trim();
-          if (!title || title.length < 2) continue;
-
-          const url = 'https://www.v2ex.com/t/' + id;
-
-          // Deduplicate
-          if (stories.some(s => s.id === id)) continue;
-
-          let node = '';
-          const nodeEl = el.querySelector('a.node');
-          if (nodeEl) {
-            node = nodeEl.textContent.trim();
-          }
-
-          let replies = 0;
-          const countEl = el.querySelector('a.count_livid, a.count_orange');
-          if (countEl) {
-            const m = countEl.textContent.match(/(\d+)/);
-            replies = m ? parseInt(m[1]) : 0;
-          }
-
-          stories.push({ id, title, url, node, replies });
-        } catch (e) {}
-      }
-
-      // For top 30, fetch each topic page and extract first post content
-      const top = stories.slice(0, 30);
-      const results = [];
-
-      for (let i = 0; i < top.length; i += 5) {
-        const batch = top.slice(i, i + 5);
-        const fetches = batch.map(async (story) => {
+        for (const el of topicEls) {
           try {
-            const resp = await fetch(story.url);
-            const html = await resp.text();
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
+            const linkEl = el.querySelector('a[href*="/t/"]');
+            if (!linkEl) continue;
 
-            const contentEl = doc.querySelector('.topic_content') ||
-                              doc.querySelector('.markdown_body') ||
-                              doc.querySelector('.cell .topic_content');
-            const preview = contentEl
-              ? contentEl.textContent.trim().substring(0, 500)
-              : '';
+            const href = linkEl.getAttribute('href') || '';
+            const match = href.match(/\/t\/(\d+)/);
+            if (!match) continue;
 
-            return { id: story.id, title: story.title, url: story.url, preview };
-          } catch (e) {
-            return { id: story.id, title: story.title, url: story.url, preview: '' };
-          }
-        });
-        const batchResults = await Promise.all(fetches);
-        results.push(...batchResults);
-      }
+            const id = match[1];
+            const title = linkEl.textContent.trim();
+            if (!title || title.length < 2) continue;
 
-      // Append remaining without preview
-      for (let i = 30; i < stories.length; i++) {
-        results.push({ id: stories[i].id, title: stories[i].title, url: stories[i].url, preview: '' });
-      }
+            const url = 'https://www.v2ex.com/t/' + id;
 
-      return JSON.stringify(results);
-    })()
+            // Deduplicate
+            if (stories.some(s => s.id === id)) continue;
+
+            let node = '';
+            const nodeEl = el.querySelector('a.node');
+            if (nodeEl) {
+              node = nodeEl.textContent.trim();
+            }
+
+            let replies = 0;
+            const countEl = el.querySelector('a.count_livid, a.count_orange');
+            if (countEl) {
+              const m = countEl.textContent.match(/(\d+)/);
+              replies = m ? parseInt(m[1]) : 0;
+            }
+
+            stories.push({ id, title, url, node, replies });
+          } catch (e) {}
+        }
+
+        // For top 30, fetch each topic page and extract first post content
+        const top = stories.slice(0, 30);
+        const results = [];
+
+        for (let i = 0; i < top.length; i += 5) {
+          const batch = top.slice(i, i + 5);
+          const fetches = batch.map(async (story) => {
+            try {
+              const resp = await fetch(story.url);
+              const html = await resp.text();
+              const parser = new DOMParser();
+              const doc = parser.parseFromString(html, 'text/html');
+
+              const contentEl = doc.querySelector('.topic_content') ||
+                                doc.querySelector('.markdown_body') ||
+                                doc.querySelector('.cell .topic_content');
+              const preview = contentEl
+                ? contentEl.textContent.trim().substring(0, 500)
+                : '';
+
+              return { id: story.id, title: story.title, url: story.url, preview };
+            } catch (e) {
+              return { id: story.id, title: story.title, url: story.url, preview: '' };
+            }
+          });
+          const batchResults = await Promise.all(fetches);
+          results.push(...batchResults);
+        }
+
+        // Append remaining without preview
+        for (let i = 30; i < stories.length; i++) {
+          results.push({ id: stories[i].id, title: stories[i].title, url: stories[i].url, preview: '' });
+        }
+
+        return JSON.stringify(results);
+      })()
 
 steps:
   - goto: "https://www.v2ex.com/?tab=hot"

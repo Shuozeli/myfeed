@@ -8,95 +8,97 @@ config:
   default_on_error: continue
 
 scripts:
-  extract_posts: |
-    (async () => {
-      // Scroll to load more posts
-      for (let i = 0; i < 5; i++) {
-        window.scrollBy(0, 800);
-        await new Promise(r => setTimeout(r, 1000));
-      }
-      window.scrollTo(0, 0);
+  extract_posts:
+    async: true
+    body: |
+      (async () => {
+        // Scroll to load more posts
+        for (let i = 0; i < 5; i++) {
+          window.scrollBy(0, 800);
+          await new Promise(r => setTimeout(r, 1000));
+        }
+        window.scrollTo(0, 0);
 
-      // Find post links and their parent containers
-      const postLinks = document.querySelectorAll('a[href*="/feed/update/"]');
-      const results = [];
-      const seen = new Set();
+        // Find post links and their parent containers
+        const postLinks = document.querySelectorAll('a[href*="/feed/update/"]');
+        const results = [];
+        const seen = new Set();
 
-      // Also try finding posts via the "Feed post" text pattern
-      const containers = document.querySelectorAll('[data-display-contents]');
+        // Also try finding posts via the "Feed post" text pattern
+        const containers = document.querySelectorAll('[data-display-contents]');
 
-      for (const container of containers) {
-        try {
-          const text = container.textContent.trim();
-          // Real posts have "Feed post" prefix and a bullet separator for time
-          if (!text.startsWith('Feed post') || text.length < 50) continue;
-          // Real posts have a time pattern like "1w •", "2d •", "3h •"
-          if (!text.match(/\d+[smhdw]\s*•/)) continue;
+        for (const container of containers) {
+          try {
+            const text = container.textContent.trim();
+            // Real posts have "Feed post" prefix and a bullet separator for time
+            if (!text.startsWith('Feed post') || text.length < 50) continue;
+            // Real posts have a time pattern like "1w •", "2d •", "3h •"
+            if (!text.match(/\d+[smhdw]\s*•/)) continue;
 
-          // Extract author (first line after "Feed post")
-          const lines = text.replace('Feed post', '').trim().split('\n').map(l => l.trim()).filter(Boolean);
-          const author = lines[0] || '';
+            // Extract author (first line after "Feed post")
+            const lines = text.replace('Feed post', '').trim().split('\n').map(l => l.trim()).filter(Boolean);
+            const author = lines[0] || '';
 
-          // Find post link within this container
-          const linkEl = container.querySelector('a[href*="/feed/update/"], a[href*="/posts/"]');
-          const href = linkEl ? linkEl.getAttribute('href') : '';
-          const url = href.startsWith('http') ? href : (href ? 'https://www.linkedin.com' + href : '');
+            // Find post link within this container
+            const linkEl = container.querySelector('a[href*="/feed/update/"], a[href*="/posts/"]');
+            const href = linkEl ? linkEl.getAttribute('href') : '';
+            const url = href.startsWith('http') ? href : (href ? 'https://www.linkedin.com' + href : '');
 
-          // Use the URL or author+text as ID
-          const id = href || (author + text.substring(0, 50));
-          if (seen.has(id)) continue;
-          seen.add(id);
+            // Use the URL or author+text as ID
+            const id = href || (author + text.substring(0, 50));
+            if (seen.has(id)) continue;
+            seen.add(id);
 
-          // Extract the main text content (skip the metadata lines)
-          // Pattern: "Feed post AuthorName TimeAgo • ActualContent"
-          const bulletIdx = text.indexOf('•');
-          let content = '';
-          if (bulletIdx > -1) {
-            content = text.substring(bulletIdx + 1).trim();
-          } else {
-            content = lines.slice(2).join(' ').trim();
-          }
-          // Trim noise from embedded media players and engagement UI
-          for (const cutoff of ['Video Player', 'Audio Player', 'reactions', 'LikeComment', 'Like\nComment']) {
-            const idx = content.indexOf(cutoff);
-            if (idx > 20) content = content.substring(0, idx).trim();
-          }
+            // Extract the main text content (skip the metadata lines)
+            // Pattern: "Feed post AuthorName TimeAgo • ActualContent"
+            const bulletIdx = text.indexOf('•');
+            let content = '';
+            if (bulletIdx > -1) {
+              content = text.substring(bulletIdx + 1).trim();
+            } else {
+              content = lines.slice(2).join(' ').trim();
+            }
+            // Trim noise from embedded media players and engagement UI
+            for (const cutoff of ['Video Player', 'Audio Player', 'reactions', 'LikeComment', 'Like\nComment']) {
+              const idx = content.indexOf(cutoff);
+              if (idx > 20) content = content.substring(0, idx).trim();
+            }
 
-          // Extract engagement numbers from the container
-          // Look for engagement in specific button/link elements
-          const engagementEls = container.querySelectorAll('button, span, a');
-          let likesText = '';
-          let commentsText = '';
-          for (const el of engagementEls) {
-            const t = el.textContent.trim().toLowerCase();
-            if (t.match(/^\d[\d,]*\s*(reaction|like)/)) likesText = t;
-            if (t.match(/^\d[\d,]*\s*comment/)) commentsText = t;
-          }
-          const likesMatch = likesText.match(/^(\d[\d,]*)/);
-          const commentsMatch = commentsText.match(/^(\d[\d,]*)/);
-          const likes = likesMatch ? parseInt(likesMatch[1].replace(/,/g, '')) : 0;
-          const comments = commentsMatch ? parseInt(commentsMatch[1].replace(/,/g, '')) : 0;
+            // Extract engagement numbers from the container
+            // Look for engagement in specific button/link elements
+            const engagementEls = container.querySelectorAll('button, span, a');
+            let likesText = '';
+            let commentsText = '';
+            for (const el of engagementEls) {
+              const t = el.textContent.trim().toLowerCase();
+              if (t.match(/^\d[\d,]*\s*(reaction|like)/)) likesText = t;
+              if (t.match(/^\d[\d,]*\s*comment/)) commentsText = t;
+            }
+            const likesMatch = likesText.match(/^(\d[\d,]*)/);
+            const commentsMatch = commentsText.match(/^(\d[\d,]*)/);
+            const likes = likesMatch ? parseInt(likesMatch[1].replace(/,/g, '')) : 0;
+            const comments = commentsMatch ? parseInt(commentsMatch[1].replace(/,/g, '')) : 0;
 
-          // Extract company from sub-description area
-          const imgEl = container.querySelector('img[alt]');
-          const company = imgEl ? imgEl.getAttribute('alt').replace(/'s profile/i, '').trim() : '';
+            // Extract company from sub-description area
+            const imgEl = container.querySelector('img[alt]');
+            const company = imgEl ? imgEl.getAttribute('alt').replace(/'s profile/i, '').trim() : '';
 
-          const title = author
-            ? author + ': ' + content.substring(0, 80)
-            : content.substring(0, 80);
-          const preview = content.substring(0, 500);
+            const title = author
+              ? author + ': ' + content.substring(0, 80)
+              : content.substring(0, 80);
+            const preview = content.substring(0, 500);
 
-          if (title.length > 5) {
-            results.push({
-              id: String(id), title, url, preview,
-              author, likes, comments, company
-            });
-          }
-        } catch (e) {}
-      }
+            if (title.length > 5) {
+              results.push({
+                id: String(id), title, url, preview,
+                author, likes, comments, company
+              });
+            }
+          } catch (e) {}
+        }
 
-      return JSON.stringify(results);
-    })()
+        return JSON.stringify(results);
+      })()
 
 steps:
   - goto: "https://www.linkedin.com/feed/"

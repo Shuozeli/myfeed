@@ -8,127 +8,129 @@ config:
   default_on_error: continue
 
 scripts:
-  extract_hot_with_content: |
-    (async () => {
-      // Step 1: Collect items from the hot listing page
-      const cards = document.querySelectorAll('.HotItem');
-      const items = [];
-      for (const card of cards) {
-        try {
-          const linkEl = card.querySelector('.HotItem-content a');
-          if (!linkEl) continue;
-
-          const title = (linkEl.getAttribute('title') || linkEl.textContent || '').trim();
-          const href = linkEl.getAttribute('href') || '';
-          if (!title || !href) continue;
-
-          const url = href.startsWith('http') ? href : 'https://www.zhihu.com' + href;
-
-          // Determine type: question vs article (zhihu.com/question/xxx vs zhuanlan.zhihu.com/p/xxx)
-          const isQuestion = url.includes('/question/');
-          const isArticle = url.includes('/p/');
-          const type = isQuestion ? 'question' : (isArticle ? 'article' : 'other');
-
-          // Extract rank/metric from the hot item
-          const metricEl = card.querySelector('.HotItem-metrics');
-          const metric = metricEl ? metricEl.textContent.trim() : '';
-
-          // Extract excerpt shown on listing page
-          const excerptEl = card.querySelector('.HotItem-excerpt');
-          const excerpt = excerptEl ? excerptEl.textContent.trim() : '';
-
-          items.push({ id: url, title, url, type, metric, excerpt });
-        } catch (e) {
-          // skip malformed card
-        }
-      }
-
-      // Take top 30
-      const top = items.slice(0, 30);
-
-      // Helper: extract text from an element, stripping <style> and <script> tags
-      const cleanTextOf = (el) => {
-        const clone = el.cloneNode(true);
-        clone.querySelectorAll('style, script, noscript').forEach(s => s.remove());
-        return clone.textContent.trim();
-      };
-
-      // Step 2: Fetch each question/article page for content + metadata
-      const results = [];
-      for (let i = 0; i < top.length; i += 5) {
-        const batch = top.slice(i, i + 5);
-        const fetches = batch.map(async (item) => {
+  extract_hot_with_content:
+    async: true
+    body: |
+      (async () => {
+        // Step 1: Collect items from the hot listing page
+        const cards = document.querySelectorAll('.HotItem');
+        const items = [];
+        for (const card of cards) {
           try {
-            const resp = await fetch(item.url, {
-              credentials: 'include',
-              headers: { 'Accept': 'text/html' }
-            });
-            const html = await resp.text();
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
+            const linkEl = card.querySelector('.HotItem-content a');
+            if (!linkEl) continue;
 
-            // Extract answer/article content
-            const contentEl = doc.querySelector('.RichContent-inner')
-              || doc.querySelector('[itemprop="text"]')
-              || doc.querySelector('.RichText')
-              || doc.querySelector('.Post-RichTextContainer');
-            let preview = contentEl
-              ? cleanTextOf(contentEl).substring(0, 500)
-              : '';
+            const title = (linkEl.getAttribute('title') || linkEl.textContent || '').trim();
+            const href = linkEl.getAttribute('href') || '';
+            if (!title || !href) continue;
 
-            // Fallback to listing excerpt
-            if (!preview && item.excerpt) {
-              preview = item.excerpt.substring(0, 500);
-            }
+            const url = href.startsWith('http') ? href : 'https://www.zhihu.com' + href;
 
-            // Upvote count
-            const voteEl = doc.querySelector('.VoteButton--up')
-              || doc.querySelector('[aria-label*="赞同"]');
-            const upvotes = voteEl
-              ? (voteEl.textContent.trim().match(/[\d,.万k]+/i) || [''])[0]
-              : '';
+            // Determine type: question vs article (zhihu.com/question/xxx vs zhuanlan.zhihu.com/p/xxx)
+            const isQuestion = url.includes('/question/');
+            const isArticle = url.includes('/p/');
+            const type = isQuestion ? 'question' : (isArticle ? 'article' : 'other');
 
-            // Answer count
-            const ansCountEl = doc.querySelector('.List-headerText span');
-            const answers = ansCountEl
-              ? (ansCountEl.textContent.match(/(\d+)/) || ['', ''])[1]
-              : '';
+            // Extract rank/metric from the hot item
+            const metricEl = card.querySelector('.HotItem-metrics');
+            const metric = metricEl ? metricEl.textContent.trim() : '';
 
-            // Author
-            const authorEl = doc.querySelector('.AuthorInfo-name a')
-              || doc.querySelector('.UserLink-link')
-              || doc.querySelector('[itemprop="name"]');
-            const author = authorEl ? authorEl.textContent.trim() : '';
+            // Extract excerpt shown on listing page
+            const excerptEl = card.querySelector('.HotItem-excerpt');
+            const excerpt = excerptEl ? excerptEl.textContent.trim() : '';
 
-            // Topics from question header or topic links
-            let topic = '';
-            const topicLinks = doc.querySelectorAll('a[href*="/topic/"]');
-            if (topicLinks.length > 0) {
-              topic = Array.from(topicLinks)
-                .slice(0, 3)
-                .map(a => a.textContent.trim())
-                .filter(t => t.length > 0 && !t.includes('{'))
-                .join(', ');
-            }
-
-            return {
-              id: item.id, title: item.title, url: item.url,
-              preview, upvotes, answers, author, topic, metric: item.metric
-            };
+            items.push({ id: url, title, url, type, metric, excerpt });
           } catch (e) {
-            return {
-              id: item.id, title: item.title, url: item.url,
-              preview: item.excerpt || '', upvotes: '', answers: '',
-              author: '', topic: '', metric: item.metric
-            };
+            // skip malformed card
           }
-        });
-        const batchResults = await Promise.all(fetches);
-        results.push(...batchResults);
-      }
+        }
 
-      return JSON.stringify(results);
-    })()
+        // Take top 30
+        const top = items.slice(0, 30);
+
+        // Helper: extract text from an element, stripping <style> and <script> tags
+        const cleanTextOf = (el) => {
+          const clone = el.cloneNode(true);
+          clone.querySelectorAll('style, script, noscript').forEach(s => s.remove());
+          return clone.textContent.trim();
+        };
+
+        // Step 2: Fetch each question/article page for content + metadata
+        const results = [];
+        for (let i = 0; i < top.length; i += 5) {
+          const batch = top.slice(i, i + 5);
+          const fetches = batch.map(async (item) => {
+            try {
+              const resp = await fetch(item.url, {
+                credentials: 'include',
+                headers: { 'Accept': 'text/html' }
+              });
+              const html = await resp.text();
+              const parser = new DOMParser();
+              const doc = parser.parseFromString(html, 'text/html');
+
+              // Extract answer/article content
+              const contentEl = doc.querySelector('.RichContent-inner')
+                || doc.querySelector('[itemprop="text"]')
+                || doc.querySelector('.RichText')
+                || doc.querySelector('.Post-RichTextContainer');
+              let preview = contentEl
+                ? cleanTextOf(contentEl).substring(0, 500)
+                : '';
+
+              // Fallback to listing excerpt
+              if (!preview && item.excerpt) {
+                preview = item.excerpt.substring(0, 500);
+              }
+
+              // Upvote count
+              const voteEl = doc.querySelector('.VoteButton--up')
+                || doc.querySelector('[aria-label*="赞同"]');
+              const upvotes = voteEl
+                ? (voteEl.textContent.trim().match(/[\d,.万k]+/i) || [''])[0]
+                : '';
+
+              // Answer count
+              const ansCountEl = doc.querySelector('.List-headerText span');
+              const answers = ansCountEl
+                ? (ansCountEl.textContent.match(/(\d+)/) || ['', ''])[1]
+                : '';
+
+              // Author
+              const authorEl = doc.querySelector('.AuthorInfo-name a')
+                || doc.querySelector('.UserLink-link')
+                || doc.querySelector('[itemprop="name"]');
+              const author = authorEl ? authorEl.textContent.trim() : '';
+
+              // Topics from question header or topic links
+              let topic = '';
+              const topicLinks = doc.querySelectorAll('a[href*="/topic/"]');
+              if (topicLinks.length > 0) {
+                topic = Array.from(topicLinks)
+                  .slice(0, 3)
+                  .map(a => a.textContent.trim())
+                  .filter(t => t.length > 0 && !t.includes('{'))
+                  .join(', ');
+              }
+
+              return {
+                id: item.id, title: item.title, url: item.url,
+                preview, upvotes, answers, author, topic, metric: item.metric
+              };
+            } catch (e) {
+              return {
+                id: item.id, title: item.title, url: item.url,
+                preview: item.excerpt || '', upvotes: '', answers: '',
+                author: '', topic: '', metric: item.metric
+              };
+            }
+          });
+          const batchResults = await Promise.all(fetches);
+          results.push(...batchResults);
+        }
+
+        return JSON.stringify(results);
+      })()
 
 steps:
   - goto: "https://www.zhihu.com/hot"

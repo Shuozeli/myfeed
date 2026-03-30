@@ -8,80 +8,82 @@ config:
   default_on_error: continue
 
 scripts:
-  extract_articles: |
-    (async () => {
-      const allLinks = document.querySelectorAll('a[href*="/p/"]');
-      const seen = new Set();
-      const stories = [];
+  extract_articles:
+    async: true
+    body: |
+      (async () => {
+        const allLinks = document.querySelectorAll('a[href*="/p/"]');
+        const seen = new Set();
+        const stories = [];
 
-      for (const link of allLinks) {
-        try {
-          const href = link.getAttribute('href') || '';
-          const match = href.match(/\/p\/(\d+)/);
-          if (!match) continue;
-
-          const id = match[1];
-          if (seen.has(id)) continue;
-
-          const title = link.textContent.trim();
-          if (!title || title.length <= 5) continue;
-
-          seen.add(id);
-
-          let url = href;
-          if (url.startsWith('/')) {
-            url = 'https://36kr.com' + url;
-          } else if (!url.startsWith('http')) {
-            url = 'https://36kr.com/p/' + id;
-          }
-
-          stories.push({ id, title, url });
-        } catch (e) {}
-      }
-
-      // For top 30, fetch each article page and extract body content
-      const top = stories.slice(0, 30);
-      const results = [];
-
-      for (let i = 0; i < top.length; i += 5) {
-        const batch = top.slice(i, i + 5);
-        const fetches = batch.map(async (story) => {
+        for (const link of allLinks) {
           try {
-            const resp = await fetch(story.url);
-            const html = await resp.text();
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
+            const href = link.getAttribute('href') || '';
+            const match = href.match(/\/p\/(\d+)/);
+            if (!match) continue;
 
-            const contentEl = doc.querySelector('.article-content') ||
-                              doc.querySelector('[class*="articleDetailContent"]') ||
-                              doc.querySelector('article');
-            let preview = '';
-            if (contentEl) {
-              const paragraphs = contentEl.querySelectorAll('p');
-              const texts = [];
-              for (const p of paragraphs) {
-                const t = p.textContent.trim();
-                if (t) texts.push(t);
-              }
-              preview = texts.join(' ').substring(0, 500);
+            const id = match[1];
+            if (seen.has(id)) continue;
+
+            const title = link.textContent.trim();
+            if (!title || title.length <= 5) continue;
+
+            seen.add(id);
+
+            let url = href;
+            if (url.startsWith('/')) {
+              url = 'https://36kr.com' + url;
+            } else if (!url.startsWith('http')) {
+              url = 'https://36kr.com/p/' + id;
             }
 
-            return { id: story.id, title: story.title, url: story.url, preview };
-          } catch (e) {
-            return { id: story.id, title: story.title, url: story.url, preview: '' };
-          }
-        });
-        const batchResults = await Promise.all(fetches);
-        results.push(...batchResults);
-      }
+            stories.push({ id, title, url });
+          } catch (e) {}
+        }
 
-      // Append remaining without preview
-      for (let i = 30; i < stories.length; i++) {
-        results.push({ id: stories[i].id, title: stories[i].title, url: stories[i].url, preview: '' });
-      }
+        // For top 30, fetch each article page and extract body content
+        const top = stories.slice(0, 30);
+        const results = [];
 
-      return JSON.stringify(results);
-    })()
+        for (let i = 0; i < top.length; i += 5) {
+          const batch = top.slice(i, i + 5);
+          const fetches = batch.map(async (story) => {
+            try {
+              const resp = await fetch(story.url);
+              const html = await resp.text();
+              const parser = new DOMParser();
+              const doc = parser.parseFromString(html, 'text/html');
+
+              const contentEl = doc.querySelector('.article-content') ||
+                                doc.querySelector('[class*="articleDetailContent"]') ||
+                                doc.querySelector('article');
+              let preview = '';
+              if (contentEl) {
+                const paragraphs = contentEl.querySelectorAll('p');
+                const texts = [];
+                for (const p of paragraphs) {
+                  const t = p.textContent.trim();
+                  if (t) texts.push(t);
+                }
+                preview = texts.join(' ').substring(0, 500);
+              }
+
+              return { id: story.id, title: story.title, url: story.url, preview };
+            } catch (e) {
+              return { id: story.id, title: story.title, url: story.url, preview: '' };
+            }
+          });
+          const batchResults = await Promise.all(fetches);
+          results.push(...batchResults);
+        }
+
+        // Append remaining without preview
+        for (let i = 30; i < stories.length; i++) {
+          results.push({ id: stories[i].id, title: stories[i].title, url: stories[i].url, preview: '' });
+        }
+
+        return JSON.stringify(results);
+      })()
 
 steps:
   - goto: "https://36kr.com/"

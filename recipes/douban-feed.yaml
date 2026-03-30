@@ -6,41 +6,43 @@ config:
   default_timeout_ms: 60000
   default_on_error: continue
 scripts:
-  extract: |
-    (async () => {
-      const results = [];
-      const seen = new Set();
-      for (const a of document.querySelectorAll('a')) {
-        const href = a.getAttribute('href') || '';
-        const text = a.textContent.trim();
-        if (!href.includes('/group/topic/') || text.length < 5 || seen.has(href)) continue;
-        seen.add(href);
-        const url = href.startsWith('http') ? href : 'https://www.douban.com' + href;
-        const idMatch = href.match(/topic\/(\d+)/);
-        const id = idMatch ? idMatch[1] : href;
-        results.push({ id, title: text.substring(0, 100), url, preview: '' });
-      }
-      // Fetch top 15 for content
-      const top = results.slice(0, 15);
-      const final = [];
-      for (let i = 0; i < top.length; i += 5) {
-        const batch = top.slice(i, i + 5);
-        const fetches = batch.map(async (item) => {
-          try {
-            const resp = await fetch(item.url, { credentials: 'include' });
-            const html = await resp.text();
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
-            const bodyEl = doc.querySelector('.topic-content, .rich-content, #link-report');
-            const preview = bodyEl ? bodyEl.textContent.trim().substring(0, 500) : '';
-            return { ...item, preview };
-          } catch(e) { return item; }
-        });
-        final.push(...await Promise.all(fetches));
-      }
-      for (let i = 15; i < results.length; i++) final.push(results[i]);
-      return JSON.stringify(final);
-    })()
+  extract:
+    async: true
+    body: |
+      (async () => {
+        const results = [];
+        const seen = new Set();
+        for (const a of document.querySelectorAll('a')) {
+          const href = a.getAttribute('href') || '';
+          const text = a.textContent.trim();
+          if (!href.includes('/group/topic/') || text.length < 5 || seen.has(href)) continue;
+          seen.add(href);
+          const url = href.startsWith('http') ? href : 'https://www.douban.com' + href;
+          const idMatch = href.match(/topic\/(\d+)/);
+          const id = idMatch ? idMatch[1] : href;
+          results.push({ id, title: text.substring(0, 100), url, preview: '' });
+        }
+        // Fetch top 15 for content
+        const top = results.slice(0, 15);
+        const final = [];
+        for (let i = 0; i < top.length; i += 5) {
+          const batch = top.slice(i, i + 5);
+          const fetches = batch.map(async (item) => {
+            try {
+              const resp = await fetch(item.url, { credentials: 'include' });
+              const html = await resp.text();
+              const parser = new DOMParser();
+              const doc = parser.parseFromString(html, 'text/html');
+              const bodyEl = doc.querySelector('.topic-content, .rich-content, #link-report');
+              const preview = bodyEl ? bodyEl.textContent.trim().substring(0, 500) : '';
+              return { ...item, preview };
+            } catch(e) { return item; }
+          });
+          final.push(...await Promise.all(fetches));
+        }
+        for (let i = 15; i < results.length; i++) final.push(results[i]);
+        return JSON.stringify(final);
+      })()
 steps:
   - goto: "https://www.douban.com/group/explore"
     wait_for: "body"
