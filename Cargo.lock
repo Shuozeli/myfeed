@@ -1103,6 +1103,7 @@ checksum = "1d87ecb2933e8aeadb3e3a02b828fed80a7528047e68b4f424523a0981a3a084"
 name = "myfeed"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chrono",
  "clap",
  "diesel",
@@ -1372,19 +1373,15 @@ dependencies = [
 [[package]]
 name = "pwright-bridge"
 version = "0.1.0"
-source = "git+https://github.com/shuozeli/pwright.git?branch=main#8f09353a6170dc64b75f708f5c949291e115927b"
+source = "git+https://github.com/shuozeli/pwright.git?branch=main#b6b7baee628d8b67be55fa81ef8f3a77b2d0168b"
 dependencies = [
- "anyhow",
  "async-trait",
- "base64",
  "dashmap",
  "pwright-cdp",
  "pwright-js",
- "rand",
  "reqwest",
  "serde",
  "serde_json",
- "thiserror",
  "tokio",
  "tracing",
  "url",
@@ -1393,7 +1390,7 @@ dependencies = [
 [[package]]
 name = "pwright-cdp"
 version = "0.1.0"
-source = "git+https://github.com/shuozeli/pwright.git?branch=main#8f09353a6170dc64b75f708f5c949291e115927b"
+source = "git+https://github.com/shuozeli/pwright.git?branch=main#b6b7baee628d8b67be55fa81ef8f3a77b2d0168b"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1412,7 +1409,7 @@ dependencies = [
 [[package]]
 name = "pwright-js"
 version = "0.1.0"
-source = "git+https://github.com/shuozeli/pwright.git?branch=main#8f09353a6170dc64b75f708f5c949291e115927b"
+source = "git+https://github.com/shuozeli/pwright.git?branch=main#b6b7baee628d8b67be55fa81ef8f3a77b2d0168b"
 dependencies = [
  "serde_json",
 ]
@@ -1420,7 +1417,7 @@ dependencies = [
 [[package]]
 name = "pwright-script"
 version = "0.1.0"
-source = "git+https://github.com/shuozeli/pwright.git?branch=main#8f09353a6170dc64b75f708f5c949291e115927b"
+source = "git+https://github.com/shuozeli/pwright.git?branch=main#b6b7baee628d8b67be55fa81ef8f3a77b2d0168b"
 dependencies = [
  "prost",
  "prost-build",

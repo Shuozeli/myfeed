@@ -2,6 +2,7 @@ mod config;
 mod crawler;
 mod db;
 mod feed;
+pub mod notifier;
 pub mod proto;
 mod scheduler;
 mod schema;
@@ -105,24 +106,17 @@ async fn main() {
     let db = Arc::new(db::FeedDb::new(&config.database_url));
     db.migrate();
 
-    let (sender, consumer) = telegram::create_telegram_channel(
-        config.telegram_bot_token.clone(),
-        config.telegram_chat_id.clone(),
-    );
-    let sender = Arc::new(sender);
+    let notifier = notifier::create_notifier(&config);
 
     match cli.command {
         Command::Run => {
             info!("starting myfeed daemon");
-            // Spawn the telegram consumer (drains queue at 1 msg/sec)
-            tokio::spawn(consumer.run());
-            scheduler::run(config, db, sender).await;
+            scheduler::run(config, db, notifier).await;
         }
         Command::Once => {
             info!("running single crawl cycle");
-            tokio::spawn(consumer.run());
             for site in &config.enabled_sites {
-                if let Err(e) = scheduler::crawl_site(&config, &db, &sender, site).await {
+                if let Err(e) = scheduler::crawl_site(&config, &db, &notifier, site).await {
                     tracing::error!(site, error = %e, "crawl failed");
                 }
             }
@@ -158,9 +152,12 @@ async fn main() {
                 }
             };
 
-            let browser = pwright_bridge::Browser::connect_http(&config.cdp_endpoint)
-                .await
-                .expect("failed to connect to Chrome");
+            let browser = pwright_bridge::Browser::connect(pwright_bridge::BrowserConfig {
+                cdp_url: config.cdp_endpoint.clone(),
+                ..Default::default()
+            })
+            .await
+            .expect("failed to connect to browser");
             let tab = browser.new_tab(url).await.expect("failed to open tab");
 
             println!("Browser tab opened to {url}");

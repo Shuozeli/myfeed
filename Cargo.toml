@@ -41,5 +41,8 @@ chrono = "0.4"
 # CLI
 clap = { version = "4", features = ["derive"] }
 
+# Async trait support
+async-trait = "0.1"
+
 [build-dependencies]
 prost-build = "0.13"

@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 use crate::config::Config;
 use crate::crawler;
 use crate::db::FeedDb;
+use crate::notifier::Notifier;
 use crate::proto;
-use crate::telegram::TelegramSender;
 
 /// Typed event detail structs for `event_log` entries.
 /// These ensure compile-time consistency between writers (scheduler) and readers (db).
@@ -41,7 +41,7 @@ where
 }
 
 /// Main scheduler loop. Connects to Chrome, runs feed recipes on a timer.
-pub async fn run(config: Arc<Config>, db: Arc<FeedDb>, bot: Arc<TelegramSender>) -> ! {
+pub async fn run(config: Arc<Config>, db: Arc<FeedDb>, notifier: Arc<dyn Notifier>) -> ! {
     let interval = Duration::from_secs(config.crawl_interval_secs);
 
     info!(
@@ -64,7 +64,7 @@ pub async fn run(config: Arc<Config>, db: Arc<FeedDb>, bot: Arc<TelegramSender>)
                 // Per-site timeout: 2 minutes max per attempt
                 let result = tokio::time::timeout(
                     Duration::from_secs(120),
-                    crawl_site(&config, &db, &bot, site),
+                    crawl_site(&config, &db, &notifier, site),
                 )
                 .await;
 
@@ -136,7 +136,7 @@ pub async fn run(config: Arc<Config>, db: Arc<FeedDb>, bot: Arc<TelegramSender>)
 pub async fn crawl_site(
     config: &Config,
     db: &Arc<FeedDb>,
-    bot: &TelegramSender,
+    notifier: &Arc<dyn Notifier>,
     site: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let recipe = crawler::recipe_path(site);
@@ -156,12 +156,16 @@ pub async fn crawl_site(
         .await?;
     }
 
-    let browser = Browser::connect_http(&config.cdp_endpoint).await?;
+    let browser = Browser::connect(pwright_bridge::BrowserConfig {
+        cdp_url: config.cdp_endpoint.clone(),
+        ..Default::default()
+    })
+    .await?;
     let tab = browser.new_tab("about:blank").await?;
     let page = tab.page();
 
     // Run recipe and process results. Always close the tab afterwards.
-    let result = crawl_with_page(config, db, bot, site, &page).await;
+    let result = crawl_with_page(config, db, notifier, site, &page).await;
     if let Err(e) = tab.close().await {
         warn!(site, error = %e, "failed to close tab");
     }
@@ -190,7 +194,7 @@ pub async fn crawl_site(
                  The recipe may need updating."
             );
             warn!(site, streak, "stale recipe detected");
-            bot.send_message(&msg).await;
+            notifier.notify_message(&msg).await;
         }
     }
 
@@ -201,7 +205,7 @@ pub async fn crawl_site(
 async fn crawl_with_page(
     config: &Config,
     db: &Arc<FeedDb>,
-    bot: &TelegramSender,
+    notifier: &Arc<dyn crate::notifier::Notifier>,
     site: &str,
     page: &pwright_bridge::playwright::Page,
 ) -> Result<(usize, u32), Box<dyn std::error::Error + Send + Sync>> {
@@ -269,10 +273,11 @@ async fn crawl_with_page(
     // Enqueue notifications (consumer drains at 1 msg/sec)
     if config.digest_mode {
         let digest = format_digest(site, &filtered);
-        bot.send_message(&digest).await;
+        notifier.notify_message(&digest).await;
     } else {
         for item in &filtered {
-            bot.send_feed_item(site, &item.title, &item.url, &item.preview)
+            notifier
+                .notify_feed_item(site, &item.title, &item.url, &item.preview)
                 .await;
         }
     }
