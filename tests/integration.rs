@@ -262,10 +262,12 @@ fn test_recipe_validate_with_browser() {
     }
 
     let binary = env!("CARGO_BIN_EXE_myfeed");
-    let output = Command::new(binary)
-        .args(["recipe", "validate", "hackernews"])
-        .output()
-        .expect("failed to execute recipe validate");
+    let mut cmd = Command::new(binary);
+    cmd.args(["recipe", "validate", "hackernews"]);
+    if let Ok(cwd) = std::env::current_dir() {
+        cmd.env("RECIPES_DIR", cwd.join("recipes"));
+    }
+    let output = cmd.output().expect("failed to execute recipe validate");
 
     if !output.status.success() {
         eprintln!("stderr: {}", String::from_utf8_lossy(&output.stderr));

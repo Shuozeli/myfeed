@@ -161,4 +161,4 @@ jobs:
             -e RUST_LOG=myfeed=debug \
             -v "$(pwd):/app" \
             myfeed:test \
-            cargo test --lib
+            cargo test --test cli
