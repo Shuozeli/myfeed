@@ -10,12 +10,42 @@
 use std::process::{Command, Output};
 
 /// Helper to run myfeed command and capture output
+/// Uses a unique temp database to avoid SQLite locking between parallel tests
 fn run_myfeed(args: &[&str]) -> Output {
     let binary = env!("CARGO_BIN_EXE_myfeed");
-    Command::new(binary)
-        .args(args)
-        .output()
-        .expect("failed to execute myfeed")
+    let db_path = std::env::temp_dir().join(format!(
+        "myfeed_test_{}_{}.db",
+        std::process::id(),
+        uuid_simple()
+    ));
+    let db_url = format!("sqlite:////{}", db_path.to_string_lossy());
+    let mut cmd = Command::new(binary);
+    cmd.args(args);
+    cmd.env("DATABASE_URL", &db_url);
+    // Pass through required env vars from CI
+    if let Ok(cdp) = std::env::var("CDP_ENDPOINT") {
+        cmd.env("CDP_ENDPOINT", cdp);
+    }
+    if let Ok(token) = std::env::var("TELEGRAM_BOT_TOKEN") {
+        cmd.env("TELEGRAM_BOT_TOKEN", token);
+    }
+    if let Ok(chat) = std::env::var("TELEGRAM_CHAT_ID") {
+        cmd.env("TELEGRAM_CHAT_ID", chat);
+    }
+    if let Ok(interval) = std::env::var("CRAWL_INTERVAL_SECS") {
+        cmd.env("CRAWL_INTERVAL_SECS", interval);
+    }
+    if let Ok(sites) = std::env::var("ENABLED_SITES") {
+        cmd.env("ENABLED_SITES", sites);
+    }
+    cmd.output().expect("failed to execute myfeed")
+}
+
+/// Generate a simple unique ID
+fn uuid_simple() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let dur = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+    format!("{:x}-{:x}", dur.as_secs(), dur.subsec_nanos())
 }
 
 /// Helper to run myfeed and assert it succeeds
