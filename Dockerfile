@@ -15,7 +15,7 @@
 # ============================================================================
 # Stage 1: Base image with system dependencies
 # ============================================================================
-FROM rust:1.85-slim-bookworm AS base
+FROM rust:1.86-slim-bookworm AS base
 
 # Install system dependencies required for building
 RUN apt-get update && apt-get install -y --no-install-recommends \
