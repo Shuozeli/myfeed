@@ -36,12 +36,6 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY proto ./proto
 
-# Pre-compile dependencies (cached layer)
-# This compiles all dependencies without the actual application code
-RUN mkdir -p src && echo "fn main() {}" > src/main.rs
-RUN cargo build --release 2>/dev/null
-RUN rm -rf src target/debug/.fingerprint/myfeed-*
-
 # ============================================================================
 # Stage 2: Full build
 # ============================================================================
