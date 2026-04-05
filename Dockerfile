@@ -45,9 +45,6 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY proto ./proto
 
-# Pre-fetch dependencies (cargo fetch downloads but doesn't compile)
-RUN /root/.cargo/bin/cargo fetch
-
 # ============================================================================
 # Stage 2: Full build
 # ============================================================================
