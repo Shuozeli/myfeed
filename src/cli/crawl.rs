@@ -91,36 +91,33 @@ pub async fn run_crawl(
         }
 
         // Save to DB if requested
-        if save
-            && let Some(db) = db {
-                let snapshot = proto::CrawlSnapshot {
-                    site: site.clone(),
-                    crawled_at: Utc::now().to_rfc3339(),
-                    items: items.clone(),
-                };
-                if let Err(e) = db.save_snapshot(&snapshot) {
-                    error!(site, error = %e, "failed to save snapshot");
-                }
-                for item in &items {
-                    let raw =
-                        serde_json::to_value(item).expect("serializing FeedItem is infallible");
-                    if let Err(e) =
-                        db.insert_item(site, &item.id, &item.title, &item.url, &item.preview, &raw)
-                    {
-                        error!(site, error = %e, "failed to insert item");
-                    }
+        if save && let Some(db) = db {
+            let snapshot = proto::CrawlSnapshot {
+                site: site.clone(),
+                crawled_at: Utc::now().to_rfc3339(),
+                items: items.clone(),
+            };
+            if let Err(e) = db.save_snapshot(&snapshot) {
+                error!(site, error = %e, "failed to save snapshot");
+            }
+            for item in &items {
+                let raw = serde_json::to_value(item).expect("serializing FeedItem is infallible");
+                if let Err(e) =
+                    db.insert_item(site, &item.id, &item.title, &item.url, &item.preview, &raw)
+                {
+                    error!(site, error = %e, "failed to insert item");
                 }
             }
+        }
 
         // Send to notifier if requested
-        if notify
-            && let Some(notifier) = notifier {
-                for item in &items {
-                    notifier
-                        .notify_feed_item(site, &item.title, &item.url, &item.preview)
-                        .await;
-                }
+        if notify && let Some(notifier) = notifier {
+            for item in &items {
+                notifier
+                    .notify_feed_item(site, &item.title, &item.url, &item.preview)
+                    .await;
             }
+        }
 
         site_results.push(SiteResult {
             site: site.clone(),

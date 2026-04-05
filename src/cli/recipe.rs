@@ -92,9 +92,10 @@ pub async fn validate(site: &str, config: &crate::config::Config) -> Result<(), 
     println!("  Outputs: {}", result.outputs.len());
 
     if result.status == pwright_script::executor::ExecutionStatus::Error
-        && let Some(e) = result.error {
-            return Err(format!("recipe error: {e}"));
-        }
+        && let Some(e) = result.error
+    {
+        return Err(format!("recipe error: {e}"));
+    }
 
     // Show outputs
     for (i, output) in result.outputs.iter().enumerate() {
