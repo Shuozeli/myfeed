@@ -53,16 +53,15 @@ jobs:
       - name: Install SQLite dev
         run: sudo apt-get install -y libsqlite3-dev
       - uses: Swatinem/rust-cache@v2
-      - name: Set up test env
-        run: |
-          # Dummy env vars for CLI tests that spawn the binary as subprocess
-          echo "CDP_ENDPOINT=ws://localhost:9222" >> $GITHUB_ENV
-          echo "DATABASE_URL=sqlite:///tmp/myfeed_test.db" >> $GITHUB_ENV
-          echo "TELEGRAM_BOT_TOKEN=123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11" >> $GITHUB_ENV
-          echo "TELEGRAM_CHAT_ID=0" >> $GITHUB_ENV
-          echo "CRAWL_INTERVAL_SECS=3600" >> $GITHUB_ENV
-          echo "ENABLED_SITES=hackernews,reddit" >> $GITHUB_ENV
-      - run: cargo test
+      - name: Run tests
+        env:
+          CDP_ENDPOINT: ws://localhost:9222
+          DATABASE_URL: sqlite:///tmp/myfeed_test.db
+          TELEGRAM_BOT_TOKEN: "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+          TELEGRAM_CHAT_ID: "0"
+          CRAWL_INTERVAL_SECS: "3600"
+          ENABLED_SITES: hackernews,reddit
+        run: cargo test
 
   integration-test:
     name: Integration Tests (Lightpanda)
