@@ -13,17 +13,12 @@ use crate::notifier::Notifier;
 use crate::proto;
 
 /// Output format for crawl results.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum OutputFormat {
+    #[default]
     Json,
     Jsonl,
     Table,
-}
-
-impl Default for OutputFormat {
-    fn default() -> Self {
-        OutputFormat::Json
-    }
 }
 
 impl std::str::FromStr for OutputFormat {
@@ -45,6 +40,7 @@ struct SiteResult {
 }
 
 /// Run crawl for one or more sites, output to stdout.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_crawl(
     config: &Config,
     db: Option<&FeedDb>,
@@ -95,8 +91,8 @@ pub async fn run_crawl(
         }
 
         // Save to DB if requested
-        if save {
-            if let Some(db) = db {
+        if save
+            && let Some(db) = db {
                 let snapshot = proto::CrawlSnapshot {
                     site: site.clone(),
                     crawled_at: Utc::now().to_rfc3339(),
@@ -115,18 +111,16 @@ pub async fn run_crawl(
                     }
                 }
             }
-        }
 
         // Send to notifier if requested
-        if notify {
-            if let Some(notifier) = notifier {
+        if notify
+            && let Some(notifier) = notifier {
                 for item in &items {
                     notifier
                         .notify_feed_item(site, &item.title, &item.url, &item.preview)
                         .await;
                 }
             }
-        }
 
         site_results.push(SiteResult {
             site: site.clone(),

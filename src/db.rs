@@ -132,6 +132,7 @@ impl FeedDb {
     ///
     /// This is atomic and race-condition-free due to the UNIQUE(site, external_id) constraint.
     /// The caller should send a notification when is_new is true.
+    #[allow(clippy::too_many_arguments)]
     pub fn insert_item_is_new(
         &self,
         site: &str,
