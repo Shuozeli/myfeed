@@ -102,12 +102,14 @@ jobs:
       - name: Run integration tests
         env:
           CDP_ENDPOINT: ws://localhost:9222
+          DATABASE_URL: sqlite:///tmp/myfeed_test.db
         run: |
           docker run --rm \
             --network host \
             -e RUST_BACKTRACE=1 \
             -e RUST_LOG=myfeed=debug \
             -e CDP_ENDPOINT=ws://localhost:9222 \
+            -e DATABASE_URL=sqlite:///tmp/myfeed_test.db \
             -v "$(pwd):/app" \
             myfeed:test \
             cargo test --test integration -- --ignored --nocapture
