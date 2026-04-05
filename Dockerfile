@@ -22,7 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     protobuf-compiler \
     libsqlite3-dev \
     pkg-config \
-    openssl-dev \
+    libssl-dev \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
