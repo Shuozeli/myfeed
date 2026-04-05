@@ -21,10 +21,35 @@ fn run_crawl(sites: &[&str], format: &str) -> Output {
     for site in sites {
         args.push(site);
     }
-    Command::new(binary)
-        .args(&args)
-        .output()
-        .expect("failed to execute myfeed crawl")
+    let mut cmd = Command::new(binary);
+    cmd.args(&args);
+    // Set RECIPES_DIR to source recipes directory
+    if let Ok(cwd) = std::env::current_dir() {
+        cmd.env("RECIPES_DIR", cwd.join("recipes"));
+    }
+    // Use unique temp database to avoid SQLite locking
+    let db_path = std::env::temp_dir().join(format!("myfeed_test_{}.db", std::process::id()));
+    cmd.env(
+        "DATABASE_URL",
+        format!("sqlite:///{}", db_path.to_string_lossy()),
+    );
+    // Pass through required env vars from CI
+    if let Ok(cdp) = std::env::var("CDP_ENDPOINT") {
+        cmd.env("CDP_ENDPOINT", cdp);
+    }
+    if let Ok(token) = std::env::var("TELEGRAM_BOT_TOKEN") {
+        cmd.env("TELEGRAM_BOT_TOKEN", token);
+    }
+    if let Ok(chat) = std::env::var("TELEGRAM_CHAT_ID") {
+        cmd.env("TELEGRAM_CHAT_ID", chat);
+    }
+    if let Ok(interval) = std::env::var("CRAWL_INTERVAL_SECS") {
+        cmd.env("CRAWL_INTERVAL_SECS", interval);
+    }
+    if let Ok(sites) = std::env::var("ENABLED_SITES") {
+        cmd.env("ENABLED_SITES", sites);
+    }
+    cmd.output().expect("failed to execute myfeed crawl")
 }
 
 // =============================================================================
