@@ -2,6 +2,7 @@
 //!
 //! These tests require a running Lightpanda or Chrome browser with CDP enabled.
 //! They test the full crawl pipeline: browser -> recipe -> parser -> output.
+//! CI uses cached builds - this comment forces rebuild if cache is stale.
 //!
 //! Run with:
 //!   cargo test --test integration -- --nocapture          # Unit tests
