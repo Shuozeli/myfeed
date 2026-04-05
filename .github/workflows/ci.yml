@@ -103,6 +103,10 @@ jobs:
         env:
           CDP_ENDPOINT: ws://localhost:9222
           DATABASE_URL: sqlite:///tmp/myfeed_test.db
+          TELEGRAM_BOT_TOKEN: "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+          TELEGRAM_CHAT_ID: "0"
+          CRAWL_INTERVAL_SECS: "3600"
+          ENABLED_SITES: hackernews,reddit
         run: |
           docker run --rm \
             --network host \
@@ -110,6 +114,10 @@ jobs:
             -e RUST_LOG=myfeed=debug \
             -e CDP_ENDPOINT=ws://localhost:9222 \
             -e DATABASE_URL=sqlite:///tmp/myfeed_test.db \
+            -e TELEGRAM_BOT_TOKEN=123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11 \
+            -e TELEGRAM_CHAT_ID=0 \
+            -e CRAWL_INTERVAL_SECS=3600 \
+            -e ENABLED_SITES=hackernews,reddit \
             -v "$(pwd):/app" \
             myfeed:test \
             cargo test --test integration -- --ignored --nocapture
