@@ -15,7 +15,7 @@ fn has_browser() -> bool {
     std::env::var("CDP_ENDPOINT").is_ok()
 }
 
-/// Run myfeed crawl command
+/// Run myfeed crawl command with proper env setup
 fn run_crawl(sites: &[&str], format: &str) -> Output {
     let binary = env!("CARGO_BIN_EXE_myfeed");
     let mut args = vec!["crawl", "--format", format];
@@ -232,10 +232,13 @@ fn test_crawl_save_to_db() {
 #[test]
 fn test_recipe_list_shows_recipes() {
     let binary = env!("CARGO_BIN_EXE_myfeed");
-    let output = Command::new(binary)
-        .args(["recipe", "list"])
-        .output()
-        .expect("failed to execute myfeed recipe list");
+    let mut cmd = Command::new(binary);
+    cmd.args(["recipe", "list"]);
+    // Set RECIPES_DIR to source recipes directory
+    if let Ok(cwd) = std::env::current_dir() {
+        cmd.env("RECIPES_DIR", cwd.join("recipes"));
+    }
+    let output = cmd.output().expect("failed to execute myfeed recipe list");
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
