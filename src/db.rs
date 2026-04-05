@@ -77,12 +77,11 @@ pub struct FeedDb {
 }
 
 impl FeedDb {
-    pub fn new(database_url: &str) -> Self {
-        let conn = SqliteConnection::establish(database_url)
-            .unwrap_or_else(|e| panic!("failed to connect to {database_url}: {e}"));
-        Self {
+    pub fn new(database_url: &str) -> Result<Self, diesel::result::ConnectionError> {
+        let conn = SqliteConnection::establish(database_url)?;
+        Ok(Self {
             conn: Mutex::new(conn),
-        }
+        })
     }
 
     /// Run embedded migrations.
@@ -126,39 +125,80 @@ impl FeedDb {
         })
     }
 
-    /// Check if an item was seen within the dedup window.
-    /// `window_hours = 0` means forever (any match returns true).
-    /// Returns true if the item exists (should NOT notify).
-    pub fn was_seen_recently(
+    /// Insert a feed item and atomically determine if it's new (within dedup window).
+    /// Returns (inserted, is_new) where:
+    /// - inserted: whether the row was actually inserted (vs already existed)
+    /// - is_new: whether we should send a notification for this item
+    ///
+    /// This is atomic and race-condition-free due to the UNIQUE(site, external_id) constraint.
+    /// The caller should send a notification when is_new is true.
+    pub fn insert_item_is_new(
         &self,
         site: &str,
         external_id: &str,
-        window_hours: u64,
+        title: &str,
+        url: &str,
+        preview: &str,
+        raw_json: &serde_json::Value,
+        dedup_window_hours: u64,
     ) -> Result<bool, diesel::result::Error> {
         let mut conn = self.conn.lock().expect("db lock poisoned");
+        let now = Utc::now().to_rfc3339();
+        let json_str =
+            serde_json::to_string(raw_json).expect("serializing serde_json::Value is infallible");
+
         conn.transaction(|conn| {
-            use diesel::dsl::exists;
-            if window_hours == 0 {
-                // Forever dedup: any match
-                diesel::select(exists(
-                    feed_items::table
-                        .filter(feed_items::site.eq(site))
-                        .filter(feed_items::external_id.eq(external_id)),
-                ))
-                .get_result(conn)
+            // Check if item exists BEFORE we insert (for dedup window calculation)
+            let existed_before = diesel::select(diesel::dsl::exists(
+                feed_items::table
+                    .filter(feed_items::site.eq(site))
+                    .filter(feed_items::external_id.eq(external_id)),
+            ))
+            .get_result::<bool>(conn)?;
+
+            // Attempt insert - will be ignored if unique constraint violated
+            diesel::insert_or_ignore_into(feed_items::table)
+                .values(NewFeedItem {
+                    site,
+                    external_id,
+                    title,
+                    url,
+                    preview,
+                    raw_json: &json_str,
+                    created_at: &now,
+                })
+                .execute(conn)?;
+
+            // Determine if we should notify:
+            // - If item didn't exist before AND we just inserted it -> is_new = true (notify)
+            // - If item existed before -> check dedup window
+            //   - dedup_window = 0 (forever): existed before = not new -> is_new = false (skip)
+            //   - dedup_window > 0: existed before = check if within window
+            //     - within window: is_new = false (skip, seen recently)
+            //     - outside window: is_new = true (notify, old item rediscovered)
+            let is_new = if !existed_before {
+                // Brand new item
+                true
+            } else if dedup_window_hours == 0 {
+                // Forever dedup: if it existed, skip (even if just inserted)
+                false
             } else {
-                // Windowed dedup: only match within the window
-                #[allow(clippy::cast_possible_wrap)] // window_hours is small (< 1000)
+                // Check if the existing item is within the dedup window
                 let cutoff =
-                    (Utc::now() - chrono::Duration::hours(window_hours as i64)).to_rfc3339();
-                diesel::select(exists(
+                    (Utc::now() - chrono::Duration::hours(dedup_window_hours as i64))
+                        .to_rfc3339();
+                let is_fresh = diesel::select(diesel::dsl::exists(
                     feed_items::table
                         .filter(feed_items::site.eq(site))
                         .filter(feed_items::external_id.eq(external_id))
                         .filter(feed_items::created_at.ge(&cutoff)),
                 ))
-                .get_result(conn)
-            }
+                .get_result::<bool>(conn)?;
+                // is_new = not fresh (skip fresh items, notify about old ones)
+                !is_fresh
+            };
+
+            Ok(is_new)
         })
     }
 

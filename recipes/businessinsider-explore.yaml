@@ -1,0 +1,77 @@
+name: "Business Insider Explore"
+description: "Explore Business Insider HTML structure for feed extraction"
+version: 1
+type: query
+
+config:
+  default_timeout_ms: 20000
+
+scripts:
+  dump_structure: |
+    (() => {
+      const result = {
+        url: window.location.href,
+        title: document.title,
+        selectors_found: [],
+        sample_elements: [],
+        links: []
+      };
+
+      const checks = [
+        'article', '.tout-title', 'a[href*="/news/"]', '.content-lock', 
+        'article', '[class*="post"]', '[class*="story"]', '[class*="card"]',
+        '[class*="item"]', '[class*="headline"]', '[class*="title"]',
+        'h2 a', 'h3 a', 'a[href*="article"]', 'a[href*="news"]',
+        'main', '[role="main"]'
+      ];
+      for (const sel of checks) {
+        try {
+          const count = document.querySelectorAll(sel).length;
+          if (count > 0) result.selectors_found.push({ selector: sel, count });
+        } catch (e) {}
+      }
+
+      const candidates = document.querySelectorAll(
+        'article, [class*="story"], [class*="headline"], [class*="post"], [class*="item"], [class*="card"], h2 a, h3 a'
+      );
+      for (let i = 0; i < Math.min(candidates.length, 5); i++) {
+        const el = candidates[i];
+        result.sample_elements.push({
+          tag: el.tagName,
+          id: el.id || '',
+          classes: (typeof el.className === 'string' ? el.className : '').substring(0, 200),
+          href: el.getAttribute('href') || '',
+          text_preview: el.textContent.trim().substring(0, 300),
+          inner_html_preview: el.innerHTML.substring(0, 500)
+        });
+      }
+
+      // Collect article-like links
+      const articleLinks = document.querySelectorAll('a[href*="article"], a[href*="news"], a[href*="story"], a[href*="/2026/"], a[href*="detail"]');
+      const seen = new Set();
+      for (const a of articleLinks) {
+        const href = a.getAttribute('href') || '';
+        const text = a.textContent.trim();
+        if (text.length > 10 && !seen.has(href)) {
+          seen.add(href);
+          result.links.push({ text: text.substring(0, 100), href: href.substring(0, 150) });
+        }
+        if (result.links.length >= 10) break;
+      }
+
+      return JSON.stringify(result, null, 2);
+    })()
+
+steps:
+  - goto: "https://www.businessinsider.com"
+    wait_for: "body"
+    timeout_ms: 20000
+
+  - wait: 5000
+
+  - eval:
+      ref: dump_structure
+      save_as: structure
+
+  - output:
+      structure: "{{ structure }}"

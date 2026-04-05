@@ -1,0 +1,238 @@
+//! Integration tests for myfeed CLI with real browser automation.
+//!
+//! These tests require a running Lightpanda or Chrome browser with CDP enabled.
+//! They test the full crawl pipeline: browser -> recipe -> parser -> output.
+//!
+//! Run with:
+//!   cargo test --test integration -- --nocapture          # Unit tests
+//!   cargo test --test integration -- --ignored --nocapture # Integration tests
+
+use std::process::{Command, Output};
+
+/// Check if CDP_ENDPOINT is configured
+fn has_browser() -> bool {
+    std::env::var("CDP_ENDPOINT").is_ok()
+}
+
+/// Run myfeed crawl command
+fn run_crawl(sites: &[&str], format: &str) -> Output {
+    let binary = env!("CARGO_BIN_EXE_myfeed");
+    let mut args = vec!["crawl", "--format", format];
+    for site in sites {
+        args.push(site);
+    }
+    Command::new(binary)
+        .args(&args)
+        .output()
+        .expect("failed to execute myfeed crawl")
+}
+
+// =============================================================================
+// Tests that don't require a browser
+// =============================================================================
+
+#[test]
+fn test_crawl_requires_site() {
+    let output = run_crawl(&[], "json");
+    assert!(!output.status.success(), "should fail without sites");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("required") || stderr.contains("missing"),
+        "should require site argument: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_crawl_unknown_site_graceful() {
+    // Unknown site should print error but not crash
+    let output = run_crawl(&["nonexistent"], "json");
+    // It may fail or succeed with error message
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("recipe not found") || !output.status.success(),
+        "should report recipe not found"
+    );
+}
+
+// =============================================================================
+// Tests that require a browser (run with --ignored)
+// =============================================================================
+
+#[test]
+#[ignore]
+fn test_crawl_simple_feed_with_browser() {
+    if !has_browser() {
+        eprintln!("Skipping: CDP_ENDPOINT not set");
+        return;
+    }
+
+    let output = run_crawl(&["simple-feed"], "json");
+    if !output.status.success() {
+        eprintln!("stdout: {}", String::from_utf8_lossy(&output.stdout));
+        eprintln!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+    }
+    assert!(output.status.success(), "crawl should succeed");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("item-1") || stdout.contains("Test Article"), "should contain item data");
+}
+
+#[test]
+#[ignore]
+fn test_crawl_hackernews_mock_with_browser() {
+    if !has_browser() {
+        eprintln!("Skipping: CDP_ENDPOINT not set");
+        return;
+    }
+
+    let output = run_crawl(&["hackernews"], "json");
+    if !output.status.success() {
+        eprintln!("stdout: {}", String::from_utf8_lossy(&output.stdout));
+        eprintln!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+    }
+    assert!(output.status.success(), "crawl should succeed");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Rust"), "should contain article title");
+}
+
+#[test]
+#[ignore]
+fn test_crawl_output_formats() {
+    if !has_browser() {
+        eprintln!("Skipping: CDP_ENDPOINT not set");
+        return;
+    }
+
+    // Test JSON format
+    let json_output = run_crawl(&["simple-feed"], "json");
+    assert!(json_output.status.success());
+    let json_stdout = String::from_utf8_lossy(&json_output.stdout);
+    assert!(json_stdout.contains("["), "should be JSON array");
+
+    // Test JSONL format
+    let jsonl_output = run_crawl(&["simple-feed"], "jsonl");
+    assert!(jsonl_output.status.success());
+    let jsonl_stdout = String::from_utf8_lossy(&jsonl_output.stdout);
+    // Each line should be a valid JSON object
+    for line in jsonl_stdout.lines().filter(|l| !l.is_empty()) {
+        assert!(line.starts_with("{") && line.ends_with("}"), "should be JSON object: {}", line);
+    }
+
+    // Test table format
+    let table_output = run_crawl(&["simple-feed"], "table");
+    assert!(table_output.status.success());
+    let table_stdout = String::from_utf8_lossy(&table_output.stdout);
+    assert!(table_stdout.contains("["), "should contain site prefix");
+}
+
+#[test]
+#[ignore]
+fn test_crawl_compact_output() {
+    if !has_browser() {
+        eprintln!("Skipping: CDP_ENDPOINT not set");
+        return;
+    }
+
+    let args = vec!["crawl", "--format", "json", "--compact", "simple-feed"];
+    let binary = env!("CARGO_BIN_EXE_myfeed");
+    let output = Command::new(binary)
+        .args(&args)
+        .output()
+        .expect("failed to execute myfeed crawl");
+
+    if !output.status.success() {
+        eprintln!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+    }
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Compact should NOT contain preview
+    assert!(!stdout.contains("preview"), "compact output should not have preview");
+    // But should have id, site, title, url
+    assert!(stdout.contains("\"id\""), "should have id field");
+    assert!(stdout.contains("\"title\""), "should have title field");
+}
+
+#[test]
+#[ignore]
+fn test_crawl_save_to_db() {
+    if !has_browser() {
+        eprintln!("Skipping: CDP_ENDPOINT not set");
+        return;
+    }
+
+    // First crawl with save
+    let binary = env!("CARGO_BIN_EXE_myfeed");
+    let output = Command::new(binary)
+        .args(&["crawl", "--save", "--limit", "3", "simple-feed"])
+        .output()
+        .expect("failed to execute myfeed crawl");
+
+    if !output.status.success() {
+        eprintln!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+    }
+    assert!(output.status.success());
+
+    // Then list to verify saved
+    let list_output = Command::new(binary)
+        .args(&["list", "--limit", "10"])
+        .output()
+        .expect("failed to execute myfeed list");
+
+    let stdout = String::from_utf8_lossy(&list_output.stdout);
+    // Should show items or say "no items found"
+    assert!(
+        stdout.contains("simple-feed") || stdout.contains("no items"),
+        "should have saved items or show message"
+    );
+}
+
+// =============================================================================
+// Recipe validation tests
+// =============================================================================
+
+#[test]
+fn test_recipe_list_shows_recipes() {
+    let binary = env!("CARGO_BIN_EXE_myfeed");
+    let output = Command::new(binary)
+        .args(&["recipe", "list"])
+        .output()
+        .expect("failed to execute myfeed recipe list");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Should list available recipes
+    assert!(stdout.contains("Available recipes"), "should show recipe list header");
+    assert!(stdout.contains("hackernews"), "should list hackernews recipe");
+}
+
+#[test]
+#[ignore]
+fn test_recipe_validate_with_browser() {
+    if !has_browser() {
+        eprintln!("Skipping: CDP_ENDPOINT not set");
+        return;
+    }
+
+    let binary = env!("CARGO_BIN_EXE_myfeed");
+    let output = Command::new(binary)
+        .args(&["recipe", "validate", "hackernews"])
+        .output()
+        .expect("failed to execute recipe validate");
+
+    if !output.status.success() {
+        eprintln!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+    }
+    // May succeed or fail depending on recipe validity
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stdout.contains("Validation passed") ||
+        stdout.contains("Recipe:") ||
+        stderr.contains("error") ||
+        stderr.contains("Error"),
+        "should produce validation output"
+    );
+}

@@ -29,4 +29,17 @@
 
 ## Pending
 
-(none)
+- [ ] Integration tests with Lightpanda browser (CI job)
+
+## Completed (this session)
+
+- [x] Improve eastmoney-feed.yaml: Added batch article content fetching (top 20)
+- [x] Improve finviz-feed.yaml: Added batch article content fetching with meta description fallback
+- [x] Improve seekingalpha-feed.yaml: Added batch article content fetching
+- [x] Improve futunn-feed.yaml: Added batch article content fetching
+- [x] Improve substack-feed.yaml: Added batch article content fetching (top 10)
+
+### Code Review Fixes
+- [x] Fixed TOCTOU race condition in dedup: new `insert_item_is_new()` method atomically checks and inserts
+- [x] Parallelized site crawling: uses `futures::future::join_all` with semaphore (5 concurrent)
+- [x] Panic on startup: `FeedDb::new` and `TelegramBot::new` now return `Result`, Telegram falls back to StdoutNotifier on error

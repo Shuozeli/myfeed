@@ -1,0 +1,96 @@
+name: "1point3acres News Feed"
+description: "Extract flash news (地里快讯) from 1point3acres"
+version: 1
+type: query
+
+config:
+  default_timeout_ms: 60000
+  default_on_error: continue
+
+scripts:
+  extract_news: |
+    (() => {
+      const items = [];
+      const seen = new Set();
+
+      // The page uses a timeline layout: each news item is a "relative pb-6" div
+      // inside a "border-dashed" timeline container.
+      // Each item contains: timestamp, category tag, news text, source, and comment link.
+      const entries = document.querySelectorAll('.relative.pb-6');
+
+      for (const entry of entries) {
+        const text = (entry.textContent || '').trim();
+        if (text.length < 30) continue;
+
+        // Extract the news content - the main text block
+        const contentDiv = entry.querySelector('.min-w-0, .flex-1');
+        if (!contentDiv) continue;
+
+        const fullText = (contentDiv.textContent || '').trim();
+        if (fullText.length < 20) continue;
+
+        // Extract timestamp (format: 2026-03-26 08:29 or relative like "3小时前")
+        const timeMatch = fullText.match(/(\d{4}-\d{2}-\d{2}\s*\d{2}:\d{2})/);
+        const relTimeMatch = fullText.match(/(\d+\s*(?:小时|分钟|天|秒)前)/);
+        const timestamp = timeMatch ? timeMatch[1] : (relTimeMatch ? relTimeMatch[1] : '');
+
+        // Remove timestamp from title
+        let title = fullText;
+        if (timeMatch) title = title.replace(timeMatch[0], '').trim();
+        if (relTimeMatch) title = title.replace(relTimeMatch[0], '').trim();
+
+        // Remove "评论" suffix and trailing whitespace
+        title = title.replace(/评论\s*$/, '').trim();
+
+        // Extract source in parentheses at the end, e.g., (Bloomberg)
+        const sourceMatch = title.match(/\(([^)]+)\)\s*$/);
+        const source = sourceMatch ? sourceMatch[1] : '';
+
+        // First line is the headline, rest is the body
+        const lines = title.split('\n').filter(l => l.trim().length > 0);
+        const headline = lines[0] || title.substring(0, 200);
+        const body = lines.slice(1).join(' ').trim() || title;
+        const preview = body.substring(0, 500);
+
+        // Look for a link to the discussion
+        const link = entry.querySelector('a[href*="/home/pins/"]');
+        const url = link ? (link.href.startsWith('http') ? link.href : 'https://www.1point3acres.com' + link.getAttribute('href')) : '';
+
+        // Extract ID from URL or generate from content
+        let id = '';
+        if (link) {
+          const pinMatch = (link.getAttribute('href') || '').match(/pins\/(\d+)/);
+          if (pinMatch) id = pinMatch[1];
+        }
+        if (!id) {
+          // Hash from headline
+          id = 'news-' + Array.from(headline.substring(0, 50)).reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0).toString(36);
+        }
+
+        if (seen.has(id)) continue;
+        seen.add(id);
+
+        items.push({
+          id: id,
+          title: headline.substring(0, 200),
+          url: url,
+          preview: preview
+        });
+      }
+
+      return JSON.stringify(items);
+    })()
+
+steps:
+  - goto: "https://www.1point3acres.com/next/news"
+    wait_for: ".relative.pb-6"
+    timeout_ms: 20000
+
+  - wait: 3000
+
+  - eval:
+      ref: extract_news
+      save_as: items
+
+  - output:
+      items: "{{ items }}"

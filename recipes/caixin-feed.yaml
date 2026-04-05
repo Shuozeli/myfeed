@@ -1,10 +1,12 @@
-name: "Futunn Feed"
-description: "Extract financial news from Futunn (富途) with full content"
-version: 3
+name: "Caixin Feed"
+description: "Extract news articles from Caixin (财新)"
+version: 2
 type: query
+
 config:
   default_timeout_ms: 60000
   default_on_error: continue
+
 scripts:
   extract:
     async: true
@@ -12,16 +14,15 @@ scripts:
       (async () => {
         const results = [];
         const seen = new Set();
-        // Find news article links
         for (const a of document.querySelectorAll('a')) {
           const href = a.getAttribute('href') || '';
           const text = a.textContent.trim();
-          if (text.length < 8 || text.length > 150 || seen.has(text)) continue;
-          const isNews = href.includes('/news-detail/') || href.includes('/news/') ||
-            href.includes('/post/') || href.match(/\/\d{8,}/);
-          if (!isNews) continue;
+          if (text.length < 8 || text.length > 120 || seen.has(text)) continue;
+          // Match article URLs with date patterns
+          if (!href.match(/\d{4}-\d{2}-\d{2}/) && !href.includes('/article/')) continue;
           seen.add(text);
-          const url = href.startsWith('http') ? href : 'https://www.futunn.com' + href;
+          const url = href.startsWith('//') ? 'https:' + href :
+            (href.startsWith('/') ? 'https://www.caixin.com' + href : href);
           const idMatch = href.match(/(\d{8,})/);
           const id = idMatch ? idMatch[1] : text.substring(0, 30);
           results.push({ id, title: text, url, preview: '' });
@@ -38,25 +39,12 @@ scripts:
               const html = await resp.text();
               const parser = new DOMParser();
               const doc = parser.parseFromString(html, 'text/html');
-              // Try multiple selectors for article content
-              const bodyEl = doc.querySelector('[class*="article-content"]') ||
-                             doc.querySelector('[class*="news-content"]') ||
-                             doc.querySelector('[class*="post-content"]') ||
-                             doc.querySelector('article') ||
-                             doc.querySelector('main') ||
-                             doc.querySelector('.content');
+              const bodyEl = doc.querySelector('article') || doc.querySelector('[class*="content"]');
               let preview = '';
               if (bodyEl) {
                 const clone = bodyEl.cloneNode(true);
-                clone.querySelectorAll('style, script, .ads, .related, nav, header, footer').forEach(s => s.remove());
-                preview = clone.textContent.trim().replace(/\s+/g, ' ').substring(0, 500);
-              }
-              // Fallback to meta description
-              if (!preview) {
-                const metaDesc = doc.querySelector('meta[name="description"]');
-                if (metaDesc) {
-                  preview = metaDesc.getAttribute('content') || '';
-                }
+                clone.querySelectorAll('style, script').forEach(s => s.remove());
+                preview = clone.textContent.trim().substring(0, 500);
               }
               return { ...article, preview };
             } catch (e) {
@@ -65,12 +53,12 @@ scripts:
           });
           final.push(...await Promise.all(fetches));
         }
-        // Append remaining without preview
         for (let i = 15; i < results.length; i++) final.push(results[i]);
         return JSON.stringify(final);
       })()
+
 steps:
-  - goto: "https://www.futunn.com/"
+  - goto: "https://www.caixin.com/"
     wait_for: "body"
   - wait: 5000
   - eval: { ref: extract, save_as: items }

@@ -1,0 +1,89 @@
+name: "LatePost Feed (晚点)"
+description: "Extract articles from LatePost homepage with article content"
+version: 1
+type: query
+
+config:
+  default_timeout_ms: 60000
+  default_on_error: continue
+
+scripts:
+  extract_articles:
+    async: true
+    body: |
+      (async () => {
+        // Step 1: Collect article links from homepage
+        const linkEls = document.querySelectorAll('a[href*="/news/"]');
+        const seen = new Set();
+        const articles = [];
+
+        for (const a of linkEls) {
+          const href = a.getAttribute('href') || '';
+          const match = href.match(/[?&]id=(\d+)/) || href.match(/\/news\/(\d+)/) || href.match(/dj_detail\?id=(\d+)/);
+          if (!match) continue;
+
+          const id = match[1];
+          if (seen.has(id)) continue;
+          seen.add(id);
+
+          // Try to find the headline text within the card
+          const headlineEl = a.querySelector('[class*="headline"]') || a.querySelector('h2') || a.querySelector('h3');
+          const title = headlineEl ? headlineEl.textContent.trim() : a.textContent.trim();
+          if (!title || title.length < 4) continue;
+
+          const url = href.startsWith('http') ? href : 'https://www.latepost.com' + href;
+          articles.push({ id, title, url });
+        }
+
+        // Step 2: For top 30 articles, fetch each page and extract content
+        const top = articles.slice(0, 30);
+        const results = [];
+
+        for (let i = 0; i < top.length; i += 5) {
+          const batch = top.slice(i, i + 5);
+          const fetches = batch.map(async (article) => {
+            try {
+              const resp = await fetch(article.url);
+              const html = await resp.text();
+              const parser = new DOMParser();
+              const doc = parser.parseFromString(html, 'text/html');
+
+              const contentEl = doc.querySelector('article') ||
+                                doc.querySelector('[class*="article-content"]') ||
+                                doc.querySelector('[class*="detail"]') ||
+                                doc.querySelector('.content') ||
+                                doc.querySelector('main');
+              const preview = contentEl
+                ? contentEl.textContent.trim().replace(/\s+/g, ' ').substring(0, 500)
+                : '';
+
+              return { ...article, preview };
+            } catch (e) {
+              return { ...article, preview: '' };
+            }
+          });
+          const batchResults = await Promise.all(fetches);
+          results.push(...batchResults);
+        }
+
+        // Append remaining without content
+        for (let i = 30; i < articles.length; i++) {
+          results.push({ ...articles[i], preview: '' });
+        }
+
+        return JSON.stringify(results);
+      })()
+
+steps:
+  - goto: "https://www.latepost.com"
+    wait_for: "a[href*='/news/']"
+    timeout_ms: 15000
+
+  - wait: 3000
+
+  - eval:
+      ref: extract_articles
+      save_as: items
+
+  - output:
+      items: "{{ items }}"

@@ -1,0 +1,94 @@
+name: "People's Daily Feed"
+description: "Extract today's articles from People's Daily (人民日报)"
+version: 2
+type: query
+
+config:
+  default_timeout_ms: 60000
+  default_on_error: continue
+
+scripts:
+  extract_articles:
+    async: true
+    body: |
+      (async () => {
+        // Step 1: Get today's section pages (node_01 through node_20)
+        const baseUrl = window.location.href.replace(/node_\d+\.html.*/, '');
+        const articles = [];
+        const seen = new Set();
+
+        // Scrape first 8 sections (要闻, 评论, etc.)
+        for (let n = 1; n <= 8; n++) {
+          try {
+            const sectionUrl = baseUrl + 'node_' + String(n).padStart(2, '0') + '.html';
+            const resp = await fetch(sectionUrl);
+            const html = await resp.text();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+
+            for (const a of doc.querySelectorAll('a')) {
+              const href = a.getAttribute('href') || '';
+              const text = a.textContent.trim();
+              if (!href.includes('content_') || text.length < 5 || seen.has(href)) continue;
+              seen.add(href);
+
+              const match = href.match(/content_(\d+)/);
+              const id = match ? match[1] : href;
+              const url = href.startsWith('http') ? href
+                : new URL(href, sectionUrl).href;
+
+              articles.push({ id, title: text, url });
+            }
+          } catch (e) {}
+        }
+
+        // Step 2: Fetch each article page for content (top 30)
+        const top = articles.slice(0, 30);
+        const results = [];
+
+        for (let i = 0; i < top.length; i += 5) {
+          const batch = top.slice(i, i + 5);
+          const fetches = batch.map(async (article) => {
+            try {
+              const resp = await fetch(article.url);
+              const html = await resp.text();
+              const parser = new DOMParser();
+              const doc = parser.parseFromString(html, 'text/html');
+
+              const bodyEl = doc.querySelector('#ozoom')
+                || doc.querySelector('.text_c')
+                || doc.querySelector('.content')
+                || doc.querySelector('article');
+
+              let preview = '';
+              if (bodyEl) {
+                const clone = bodyEl.cloneNode(true);
+                clone.querySelectorAll('style, script').forEach(s => s.remove());
+                preview = clone.textContent.trim().substring(0, 500);
+              }
+
+              return { ...article, preview };
+            } catch (e) {
+              return { ...article, preview: '' };
+            }
+          });
+          const batchResults = await Promise.all(fetches);
+          results.push(...batchResults);
+        }
+
+        return JSON.stringify(results);
+      })()
+
+steps:
+  - goto: "https://paper.people.com.cn"
+    wait_for: "body"
+    timeout_ms: 15000
+
+  - wait: 3000
+
+  - eval:
+      ref: extract_articles
+      save_as: items
+
+  - output:
+      items: "{{ items }}"

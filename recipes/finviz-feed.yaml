@@ -1,31 +1,77 @@
 name: "Finviz News Feed"
-description: "Extract market news headlines from Finviz"
-version: 1
+description: "Extract market news headlines from Finviz with article previews"
+version: 2
 type: query
 config:
-  default_timeout_ms: 20000
+  default_timeout_ms: 60000
   default_on_error: continue
 scripts:
-  extract: |
-    (() => {
-      const results = [];
-      const seen = new Set();
-      const rows = document.querySelectorAll('table tr, [class*="news"] a, .nn-tab-link');
-      for (const row of rows) {
-        const links = row.tagName === 'A' ? [row] : row.querySelectorAll('a');
-        for (const a of links) {
-          const text = a.textContent.trim();
-          const href = a.getAttribute('href') || '';
-          if (text.length < 15 || text.length > 200 || seen.has(text)) continue;
-          if (!href.startsWith('http')) continue;
-          if (href.includes('finviz.com')) continue;
-          seen.add(text);
-          const id = text.substring(0, 50);
-          results.push({ id, title: text, url: href, preview: '' });
+  extract:
+    async: true
+    body: |
+      (async () => {
+        const results = [];
+        const seen = new Set();
+        // Find news links in tables and news sections
+        const rows = document.querySelectorAll('table tr, [class*="news"] a, .nn-tab-link, .news a');
+        for (const row of rows) {
+          const links = row.tagName === 'A' ? [row] : row.querySelectorAll('a');
+          for (const a of links) {
+            const text = a.textContent.trim();
+            const href = a.getAttribute('href') || '';
+            if (text.length < 15 || text.length > 200 || seen.has(text)) continue;
+            // Skip finviz internal links
+            if (href.includes('finviz.com')) continue;
+            // Must be external news link
+            if (!href.startsWith('http')) continue;
+            seen.add(text);
+            const id = text.substring(0, 50);
+            results.push({ id, title: text, url: href, preview: '' });
+          }
         }
-      }
-      return JSON.stringify(results);
-    })()
+
+        // Fetch top 20 articles for preview
+        const top = results.slice(0, 20);
+        const final = [];
+        for (let i = 0; i < top.length; i += 5) {
+          const batch = top.slice(i, i + 5);
+          const fetches = batch.map(async (article) => {
+            try {
+              const resp = await fetch(article.url, { credentials: 'include' });
+              const html = await resp.text();
+              const parser = new DOMParser();
+              const doc = parser.parseFromString(html, 'text/html');
+              // Try to find article content
+              const bodyEl = doc.querySelector('article') ||
+                             doc.querySelector('[class*="article"]') ||
+                             doc.querySelector('[class*="content"]') ||
+                             doc.querySelector('main') ||
+                             doc.querySelector('.post-content') ||
+                             doc.querySelector('.entry-content');
+              let preview = '';
+              if (bodyEl) {
+                const clone = bodyEl.cloneNode(true);
+                clone.querySelectorAll('style, script, iframe, .ads, .newsletter, nav, header, footer').forEach(s => s.remove());
+                preview = clone.textContent.trim().replace(/\s+/g, ' ').substring(0, 500);
+              }
+              // If no body found, use meta description
+              if (!preview) {
+                const metaDesc = doc.querySelector('meta[name="description"]');
+                if (metaDesc) {
+                  preview = metaDesc.getAttribute('content') || '';
+                }
+              }
+              return { ...article, preview };
+            } catch (e) {
+              return article;
+            }
+          });
+          final.push(...await Promise.all(fetches));
+        }
+        // Append remaining without preview
+        for (let i = 20; i < results.length; i++) final.push(results[i]);
+        return JSON.stringify(final);
+      })()
 steps:
   - goto: "https://finviz.com/news.ashx"
     wait_for: "body"

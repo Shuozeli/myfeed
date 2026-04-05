@@ -1,0 +1,84 @@
+name: "Business Insider Feed"
+description: "Extract articles from Business Insider homepage and section pages"
+version: 4
+type: query
+
+config:
+  default_timeout_ms: 120000
+  default_on_error: continue
+
+scripts:
+  extract_articles:
+    async: true
+    body: |
+      (async () => {
+        const seen = new Set();
+        const results = [];
+
+        function collectLinks(doc) {
+          for (const a of doc.querySelectorAll('a')) {
+            const text = a.textContent.trim();
+            const href = a.getAttribute('href') || '';
+            if (text.length < 20 || text.length > 200) continue;
+            if (text.startsWith('<') || text.includes('\n\n')) continue;
+            const isArticle = (href.startsWith('/') && href.split('/').length === 2 && href.length > 10)
+              || href.includes('businessinsider.com/');
+            if (!isArticle) continue;
+            if (seen.has(text)) continue;
+            seen.add(text);
+
+            const fullUrl = href.startsWith('http') ? href : 'https://www.businessinsider.com' + href;
+            const pathParts = new URL(fullUrl).pathname.split('/').filter(Boolean);
+            const id = pathParts[pathParts.length - 1] || String(seen.size);
+            results.push({ id, title: text, url: fullUrl, preview: '' });
+          }
+        }
+
+        // Step 1: Scroll homepage to load more
+        for (let i = 0; i < 3; i++) {
+          window.scrollBy(0, 1000);
+          await new Promise(r => setTimeout(r, 1000));
+        }
+        window.scrollTo(0, 0);
+
+        collectLinks(document);
+
+        // Step 2: Fetch section pages
+        const sections = [
+          'https://www.businessinsider.com/tech',
+          'https://www.businessinsider.com/finance',
+          'https://www.businessinsider.com/economy',
+          'https://www.businessinsider.com/politics',
+          'https://www.businessinsider.com/careers'
+        ];
+
+        for (let i = 0; i < sections.length; i += 3) {
+          const batch = sections.slice(i, i + 3);
+          const fetches = batch.map(async (url) => {
+            try {
+              const resp = await fetch(url, { credentials: 'include' });
+              const html = await resp.text();
+              const parser = new DOMParser();
+              const doc = parser.parseFromString(html, 'text/html');
+              collectLinks(doc);
+            } catch (e) {}
+          });
+          await Promise.all(fetches);
+        }
+
+        return JSON.stringify(results);
+      })()
+
+steps:
+  - goto: "https://www.businessinsider.com"
+    wait_for: "body"
+    timeout_ms: 20000
+
+  - wait: 5000
+
+  - eval:
+      ref: extract_articles
+      save_as: items
+
+  - output:
+      items: "{{ items }}"

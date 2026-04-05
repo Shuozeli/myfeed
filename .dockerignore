@@ -1,0 +1,34 @@
+# Build artifacts
+/target/
+**/target/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Environment
+.env
+.env.*
+
+# Docs (not needed for build)
+docs/
+README.zh-CN.md
+
+# Temp files
+*.log
+*.tmp
+*.db
+
+# Chrome user data (if any)
+chrome-debug/

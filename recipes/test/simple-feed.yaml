@@ -1,0 +1,29 @@
+# Test recipe: Simple Feed
+# Works with the simple-feed demo server
+
+name: simple-feed-test
+version: "1.0"
+
+steps:
+  - name: wait
+    action: waitForSelector
+    selector: ".feed"
+
+scripts:
+  extract:
+    name: extract
+    script: |
+      function extract(page) {
+        const items = [];
+        const itemEls = document.querySelectorAll('.item');
+        itemEls.forEach(el => {
+          const id = el.dataset.id;
+          const linkEl = el.querySelector('h3 a');
+          const title = linkEl ? linkEl.textContent.trim() : '';
+          const url = linkEl ? linkEl.href : '';
+          const previewEl = el.querySelector('.preview');
+          const preview = previewEl ? previewEl.textContent.trim() : '';
+          items.push({ id, title, url, preview });
+        });
+        return { items };
+      }

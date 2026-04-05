@@ -1,32 +1,70 @@
 name: "East Money Feed"
-description: "Extract trending stock discussions from East Money (股吧)"
-version: 2
+description: "Extract trending stock discussions from East Money (股吧) with full content"
+version: 3
 type: query
 config:
-  default_timeout_ms: 20000
+  default_timeout_ms: 60000
   default_on_error: continue
 scripts:
-  extract: |
-    (() => {
-      const results = [];
-      const seen = new Set();
-      for (const a of document.querySelectorAll('a')) {
-        const href = a.getAttribute('href') || '';
-        const text = a.textContent.trim();
-        // Match topic links and stock forum links
-        if (text.length < 5 || text.length > 150 || seen.has(text)) continue;
-        const isTopicLink = href.includes('gubatopic.eastmoney.com') ||
-          href.includes('caifuhao.eastmoney.com') ||
-          href.match(/guba\.eastmoney\.com\/news,\w+,\d+/);
-        if (!isTopicLink) continue;
-        seen.add(text);
-        const url = href.startsWith('//') ? 'https:' + href : href;
-        const idMatch = href.match(/(\d{10,})/);
-        const id = idMatch ? idMatch[1] : text.substring(0, 30);
-        results.push({ id, title: text.replace(/^#|#$/g, ''), url, preview: '' });
-      }
-      return JSON.stringify(results);
-    })()
+  extract:
+    async: true
+    body: |
+      (async () => {
+        const results = [];
+        const seen = new Set();
+        // Find all article links on the page
+        const allLinks = document.querySelectorAll('a');
+        for (const a of allLinks) {
+          const href = a.getAttribute('href') || '';
+          const text = a.textContent.trim();
+          // Match topic links and stock forum links
+          if (text.length < 5 || text.length > 150 || seen.has(text)) continue;
+          const isTopicLink = href.includes('gubatopic.eastmoney.com') ||
+            href.includes('caifuhao.eastmoney.com') ||
+            href.match(/guba\.eastmoney\.com\/news,\w+,\d+/);
+          if (!isTopicLink) continue;
+          seen.add(text);
+          const url = href.startsWith('//') ? 'https:' + href : href;
+          const idMatch = href.match(/(\d{10,})/);
+          const id = idMatch ? idMatch[1] : text.substring(0, 30);
+          results.push({ id, title: text.replace(/^#|#$/g, ''), url, preview: '' });
+        }
+
+        // Fetch top 20 articles for preview
+        const top = results.slice(0, 20);
+        const final = [];
+        for (let i = 0; i < top.length; i += 5) {
+          const batch = top.slice(i, i + 5);
+          const fetches = batch.map(async (article) => {
+            try {
+              const resp = await fetch(article.url, { credentials: 'include' });
+              const html = await resp.text();
+              const parser = new DOMParser();
+              const doc = parser.parseFromString(html, 'text/html');
+              // Try multiple selectors for article content
+              const bodyEl = doc.querySelector('.article-content') ||
+                             doc.querySelector('[class*="content"]') ||
+                             doc.querySelector('article') ||
+                             doc.querySelector('.detail-content') ||
+                             doc.querySelector('.bbstitle') ||
+                             doc.querySelector('main');
+              let preview = '';
+              if (bodyEl) {
+                const clone = bodyEl.cloneNode(true);
+                clone.querySelectorAll('style, script, iframe, .ads, .related, nav').forEach(s => s.remove());
+                preview = clone.textContent.trim().replace(/\s+/g, ' ').substring(0, 500);
+              }
+              return { ...article, preview };
+            } catch (e) {
+              return article;
+            }
+          });
+          final.push(...await Promise.all(fetches));
+        }
+        // Append remaining without preview
+        for (let i = 20; i < results.length; i++) final.push(results[i]);
+        return JSON.stringify(final);
+      })()
 steps:
   - goto: "https://guba.eastmoney.com/"
     wait_for: "body"

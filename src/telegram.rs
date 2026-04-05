@@ -47,14 +47,12 @@ impl TelegramSender {
 pub fn create_telegram_channel(
     token: String,
     chat_id: String,
-) -> (TelegramSender, TelegramConsumer) {
+) -> Result<(TelegramSender, TelegramConsumer), TelegramError> {
     let (tx, rx) = mpsc::channel::<QueuedMessage>(2000);
     let sender = TelegramSender { tx };
-    let consumer = TelegramConsumer {
-        rx,
-        bot: TelegramBot::new(token, chat_id),
-    };
-    (sender, consumer)
+    let bot = TelegramBot::new(token, chat_id)?;
+    let consumer = TelegramConsumer { rx, bot };
+    Ok((sender, consumer))
 }
 
 /// Background consumer that drains the message queue at a steady rate.
@@ -127,15 +125,16 @@ struct SendMessageRequest<'a> {
 }
 
 impl TelegramBot {
-    fn new(token: String, chat_id: String) -> Self {
-        Self {
-            client: Client::builder()
-                .timeout(Duration::from_secs(30))
-                .build()
-                .expect("failed to build HTTP client"),
+    fn new(token: String, chat_id: String) -> Result<Self, TelegramError> {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .map_err(|e| TelegramError::ClientBuild(e.to_string()))?;
+        Ok(Self {
+            client,
             token,
             chat_id,
-        }
+        })
     }
 
     async fn send_message(&self, text: &str) -> Result<(), TelegramError> {
@@ -177,8 +176,9 @@ pub fn escape_html(s: &str) -> String {
 }
 
 #[derive(Debug)]
-enum TelegramError {
+pub enum TelegramError {
     Http(String),
+    ClientBuild(String),
     Api { status: u16, body: String },
 }
 
@@ -186,6 +186,7 @@ impl std::fmt::Display for TelegramError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TelegramError::Http(e) => write!(f, "telegram HTTP error: {e}"),
+            TelegramError::ClientBuild(e) => write!(f, "telegram client build error: {e}"),
             TelegramError::Api { status, body } => {
                 write!(f, "telegram API error ({status}): {body}")
             }

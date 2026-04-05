@@ -1,3 +1,4 @@
+mod cli;
 mod config;
 mod crawler;
 mod db;
@@ -27,6 +28,43 @@ enum Command {
 
     /// Run a single crawl cycle and exit (useful for testing).
     Once,
+
+    /// Crawl one or more sites and output items as JSON.
+    Crawl {
+        /// Sites to crawl (e.g. hackernews, reddit, v2ex).
+        #[arg(required = true)]
+        sites: Vec<String>,
+
+        /// Recipe parameters as key=value (repeatable).
+        #[arg(short = 'p', long = "param")]
+        params: Vec<String>,
+
+        /// Maximum number of items to return.
+        #[arg(short, long)]
+        limit: Option<usize>,
+
+        /// Output format: json, jsonl, table (default: json).
+        #[arg(short, long, default_value = "json")]
+        format: String,
+
+        /// Compact output: only id, site, title, url (no preview).
+        #[arg(short, long)]
+        compact: bool,
+
+        /// Save crawl results to local database.
+        #[arg(short, long)]
+        save: bool,
+
+        /// Send new items to Telegram (daemon must not be running).
+        #[arg(short, long)]
+        notify: bool,
+    },
+
+    /// Manage and validate recipes.
+    Recipe {
+        #[command(subcommand)]
+        command: RecipeCommand,
+    },
 
     /// Open a browser tab for manual login. The user logs in,
     /// then the session cookies persist for future crawls.
@@ -89,6 +127,18 @@ enum Command {
     },
 }
 
+#[derive(Subcommand)]
+enum RecipeCommand {
+    /// List all available recipes.
+    List,
+
+    /// Validate a recipe by dry-running it in headless Chrome.
+    Validate {
+        /// Site name to validate (e.g. hackernews).
+        site: String,
+    },
+}
+
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
@@ -103,7 +153,11 @@ async fn main() {
     let cli = Cli::parse();
     let config = Arc::new(config::Config::from_env());
 
-    let db = Arc::new(db::FeedDb::new(&config.database_url));
+    let db = Arc::new(
+        db::FeedDb::new(&config.database_url)
+            .map_err(|e| format!("failed to connect to {}: {}", config.database_url, e))
+            .expect("database connection failed"),
+    );
     db.migrate();
 
     let notifier = notifier::create_notifier(&config);
@@ -124,6 +178,57 @@ async fn main() {
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
             info!("single crawl cycle complete");
         }
+        Command::Crawl {
+            sites,
+            params,
+            limit,
+            format,
+            compact,
+            save,
+            notify,
+        } => {
+            use cli::crawl::{run_crawl, OutputFormat};
+            let fmt: OutputFormat = format.parse().unwrap_or(OutputFormat::Json);
+            let db_ref = if save { Some(db.as_ref()) } else { None };
+            let notifier_ref = if notify { Some(&notifier) } else { None };
+            if let Err(e) = run_crawl(
+                &config,
+                db_ref,
+                notifier_ref,
+                &sites,
+                &params
+                    .iter()
+                    .filter_map(|p| {
+                        let mut parts = p.splitn(2, '=');
+                        match (parts.next(), parts.next()) {
+                            (Some(k), Some(v)) => Some((k.to_string(), v.to_string())),
+                            _ => None,
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+                limit,
+                fmt,
+                compact,
+                save,
+                notify,
+            )
+            .await
+            {
+                eprintln!("crawl failed: {e}");
+                std::process::exit(1);
+            }
+        }
+        Command::Recipe { command } => match command {
+            RecipeCommand::List => {
+                cli::recipe::list_recipes();
+            }
+            RecipeCommand::Validate { site } => {
+                if let Err(e) = cli::recipe::validate(&site, &config).await {
+                    eprintln!("{e}");
+                    std::process::exit(1);
+                }
+            }
+        },
         Command::Login { site } => {
             info!(site, "opening browser for manual login");
             let url = match site.as_str() {

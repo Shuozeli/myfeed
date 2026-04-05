@@ -55,12 +55,67 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo test
 
+  integration-test:
+    name: Integration Tests (Lightpanda)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Start Lightpanda
+        run: |
+          docker run -d --name lightpanda \
+            -p 9222:9222 \
+            --shm-size=256m \
+            lightpanda/browser:nightly
+
+      - name: Wait for Lightpanda
+        run: |
+          for i in {1..30}; do
+            if curl -s http://localhost:9222 > /dev/null 2>&1; then
+              echo "Lightpanda is ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Lightpanda failed to start"
+          exit 1
+
+      - name: Build test image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          load: true
+          tags: myfeed:test
+
+      - name: Run integration tests
+        env:
+          CDP_ENDPOINT: ws://localhost:9222
+        run: |
+          docker run --rm \
+            --network host \
+            -e RUST_BACKTRACE=1 \
+            -e RUST_LOG=myfeed=debug \
+            -e CDP_ENDPOINT=ws://localhost:9222 \
+            -v "$(pwd):/app" \
+            myfeed:test \
+            cargo test --test integration -- --ignored --nocapture
+
+      - name: Cleanup
+        if: always()
+        run: docker stop lightpanda || true
+
   doc:
     name: Docs
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - name: Install protoc
         uses: arduino/setup-protoc@v3
         with:
@@ -72,3 +127,30 @@ jobs:
         run: cargo doc --no-deps
         env:
           RUSTFLAGS: ""
+
+  docker-test:
+    name: Docker Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build test image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          load: true
+          tags: myfeed:test
+
+      - name: Run unit tests in Docker
+        run: |
+          docker run --rm \
+            -e RUST_BACKTRACE=1 \
+            -e RUST_LOG=myfeed=debug \
+            -v "$(pwd):/app" \
+            myfeed:test \
+            cargo test --lib

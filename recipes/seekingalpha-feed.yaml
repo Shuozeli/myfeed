@@ -1,30 +1,73 @@
 name: "Seeking Alpha Feed"
-description: "Extract articles from Seeking Alpha"
-version: 1
+description: "Extract articles from Seeking Alpha with full content"
+version: 2
 type: query
 config:
-  default_timeout_ms: 20000
+  default_timeout_ms: 60000
   default_on_error: continue
 scripts:
-  extract: |
-    (() => {
-      const results = [];
-      const seen = new Set();
-      for (const a of document.querySelectorAll('a')) {
-        const href = a.getAttribute('href') || '';
-        const text = a.textContent.trim();
-        if (text.length < 10 || text.length > 200 || seen.has(text)) continue;
-        const isArticle = href.includes('/article/') || href.includes('/news/') ||
-          href.match(/seekingalpha\.com\/\w+-\w+/);
-        if (!isArticle) continue;
-        seen.add(text);
-        const url = href.startsWith('http') ? href : 'https://seekingalpha.com' + href;
-        const idMatch = href.match(/\/([a-z0-9-]+)$/);
-        const id = idMatch ? idMatch[1] : text.substring(0, 40);
-        results.push({ id, title: text, url, preview: '' });
-      }
-      return JSON.stringify(results);
-    })()
+  extract:
+    async: true
+    body: |
+      (async () => {
+        const results = [];
+        const seen = new Set();
+        // Find article links
+        for (const a of document.querySelectorAll('a')) {
+          const href = a.getAttribute('href') || '';
+          const text = a.textContent.trim();
+          if (text.length < 10 || text.length > 200 || seen.has(text)) continue;
+          const isArticle = href.includes('/article/') || href.includes('/news/') ||
+            href.match(/seekingalpha\.com\/\w+-\w+/);
+          if (!isArticle) continue;
+          seen.add(text);
+          const url = href.startsWith('http') ? href : 'https://seekingalpha.com' + href;
+          const idMatch = href.match(/\/([a-z0-9-]+)$/);
+          const id = idMatch ? idMatch[1] : text.substring(0, 40);
+          results.push({ id, title: text, url, preview: '' });
+        }
+
+        // Fetch top 15 articles for preview
+        const top = results.slice(0, 15);
+        const final = [];
+        for (let i = 0; i < top.length; i += 5) {
+          const batch = top.slice(i, i + 5);
+          const fetches = batch.map(async (article) => {
+            try {
+              const resp = await fetch(article.url, { credentials: 'include' });
+              const html = await resp.text();
+              const parser = new DOMParser();
+              const doc = parser.parseFromString(html, 'text/html');
+              // Try multiple selectors for article content
+              const bodyEl = doc.querySelector('[class*="article-content"]') ||
+                             doc.querySelector('[class*="post-content"]') ||
+                             doc.querySelector('[class*="entry-content"]') ||
+                             doc.querySelector('article') ||
+                             doc.querySelector('main');
+              let preview = '';
+              if (bodyEl) {
+                const clone = bodyEl.cloneNode(true);
+                clone.querySelectorAll('style, script, .ads, .related-articles, .newsletter, nav, header, footer').forEach(s => s.remove());
+                preview = clone.textContent.trim().replace(/\s+/g, ' ').substring(0, 500);
+              }
+              // Fallback to meta description
+              if (!preview) {
+                const metaDesc = doc.querySelector('meta[name="description"]');
+                if (metaDesc) {
+                  preview = metaDesc.getAttribute('content') || '';
+                }
+              }
+              return { ...article, preview };
+            } catch (e) {
+              return article;
+            }
+          });
+          final.push(...await Promise.all(fetches));
+        }
+        // Append remaining without preview
+        for (let i = 15; i < results.length; i++) final.push(results[i]);
+        return JSON.stringify(final);
+      })()
 steps:
   - goto: "https://seekingalpha.com/"
     wait_for: "body"

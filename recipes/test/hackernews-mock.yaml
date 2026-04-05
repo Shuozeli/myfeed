@@ -1,0 +1,42 @@
+# Test recipe: Hackernews Mock
+# Works with the hackernews demo server
+
+name: hackernews-mock
+version: "1.0"
+
+steps:
+  - name: wait
+    action: waitForSelector
+    selector: ".itemlist"
+
+scripts:
+  extract:
+    name: extract
+    script: |
+      function extract(page) {
+        const items = [];
+        const rankEls = document.querySelectorAll('.rank');
+        const itemEls = document.querySelectorAll('.item');
+        rankEls.forEach((rankEl, i) => {
+          const item = itemEls[i];
+          if (!item) return;
+          const linkEl = item.querySelector('a');
+          const title = linkEl ? linkEl.textContent.trim() : '';
+          const url = linkEl ? linkEl.href : '';
+          const scoreEl = item.querySelector('.score');
+          const score = scoreEl ? parseInt(scoreEl.textContent) : 0;
+          const commentsEl = item.querySelector('.comments a');
+          const comments = commentsEl ? parseInt(commentsEl.textContent) : 0;
+          const ageEl = item.querySelector('.age');
+          const age = ageEl ? ageEl.textContent.trim() : '';
+          items.push({
+            id: `hn-${i + 1}`,
+            title,
+            url,
+            score,
+            comments,
+            age
+          });
+        });
+        return { items };
+      }

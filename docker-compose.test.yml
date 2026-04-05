@@ -1,0 +1,107 @@
+# Docker Compose for running myfeed integration tests
+#
+# Usage:
+#   # Start Lightpanda browser only
+#   docker compose -f docker-compose.test.yml up lightpanda
+#
+#   # Run unit tests (no browser needed)
+#   docker compose -f docker-compose.test.yml run unit-test
+#
+#   # Run integration tests (requires Lightpanda)
+#   docker compose -f docker-compose.test.yml --profile integration run integration-test
+
+services:
+  # Lightpanda browser for integration tests
+  # Lightpanda is a lightweight headless browser (~50MB vs Chrome's ~1GB)
+  # Uses WebSocket directly for CDP (no HTTP debug endpoint)
+  lightpanda:
+    image: lightpanda/browser:nightly
+    container_name: myfeed-lightpanda
+    ports:
+      - "9222:9222"  # WebSocket CDP
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9222"] || exit 1
+      interval: 1s
+      timeout: 3s
+      retries: 15
+      start_period: 2s
+    shm_size: '256mb'
+    profiles:
+      - integration
+      - browser
+
+  # Unit tests (no browser required)
+  unit-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+    container_name: myfeed-unit-test
+    environment:
+      - RUST_BACKTRACE=1
+      - RUST_LOG=myfeed=debug
+      - DATABASE_URL=sqlite:///app/myfeed.db
+      # CDP endpoint for integration tests (can be overridden)
+      - CDP_ENDPOINT=${CDP_ENDPOINT:-}
+    volumes:
+      - .:/app
+      - cargo-cache:/root/.cargo
+    working_dir: /app
+    command: cargo test --lib -- --nocapture
+
+  # Integration tests (requires Lightpanda)
+  integration-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: test
+    container_name: myfeed-integration-test
+    depends_on:
+      lightpanda:
+        condition: service_healthy
+    environment:
+      - RUST_BACKTRACE=1
+      - RUST_LOG=myfeed=debug
+      # Lightpanda WebSocket CDP endpoint
+      - CDP_ENDPOINT=ws://lightpanda:9222
+      - DATABASE_URL=sqlite:///app/myfeed_test.db
+      # Telegram not needed for tests
+      - TELEGRAM_BOT_TOKEN=
+      - TELEGRAM_CHAT_ID=
+    volumes:
+      - .:/app
+      - cargo-cache:/root/.cargo
+    working_dir: /app
+    # Note: integration tests are marked #[ignore] by default
+    # Run with: docker compose run integration-test cargo test -- --ignored
+    command: cargo test --test integration -- --ignored --nocapture
+    profiles:
+      - integration
+
+  # Full test suite (unit + integration)
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: test
+    container_name: myfeed-test
+    depends_on:
+      lightpanda:
+        condition: service_healthy
+    environment:
+      - RUST_BACKTRACE=1
+      - RUST_LOG=myfeed=debug
+      - CDP_ENDPOINT=ws://lightpanda:9222
+      - DATABASE_URL=sqlite:///app/myfeed_test.db
+      - TELEGRAM_BOT_TOKEN=
+      - TELEGRAM_CHAT_ID=
+    volumes:
+      - .:/app
+      - cargo-cache:/root/.cargo
+    working_dir: /app
+    command: cargo test -- --ignored --nocapture
+    profiles:
+      - integration
+
+volumes:
+  cargo-cache:

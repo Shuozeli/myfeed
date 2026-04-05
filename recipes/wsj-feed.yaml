@@ -1,0 +1,128 @@
+name: "WSJ Feed"
+description: "Extract stories from Wall Street Journal homepage and section pages"
+version: 1
+type: query
+
+config:
+  default_timeout_ms: 120000
+  default_on_error: continue
+
+scripts:
+  extract_articles:
+    async: true
+    body: |
+      (async () => {
+        const seen = new Set();
+        const articles = [];
+
+        function collectLinks(doc) {
+          const selectors = ['h3 a', 'h2 a', 'a[href*="/articles/"]', 'a[href*="/livecoverage/"]'];
+          for (const sel of selectors) {
+            const links = doc.querySelectorAll(sel);
+            for (const a of links) {
+              try {
+                const href = a.href || '';
+                if (!href || seen.has(href)) continue;
+                if (!href.includes('wsj.com')) continue;
+                if (href.includes('/articles/') || href.includes('/livecoverage/') ||
+                    href.includes('/finance/') || href.includes('/us-news/') ||
+                    href.includes('/economy/') || href.includes('/politics/') ||
+                    href.includes('/tech/') || href.includes('/business/') ||
+                    href.includes('/world/') || href.includes('/markets/')) {
+                  seen.add(href);
+                  const title = a.textContent.trim();
+                  if (title.length < 5) continue;
+                  const pathParts = new URL(href).pathname.split('/').filter(Boolean);
+                  const id = pathParts[pathParts.length - 1] || String(seen.size);
+                  articles.push({ id, title, url: href });
+                }
+              } catch (e) {}
+            }
+          }
+        }
+
+        // Step 1: Collect links from the current page (homepage)
+        collectLinks(document);
+
+        // Step 2: Fetch section pages for broader coverage
+        const sections = [
+          'https://www.wsj.com/tech',
+          'https://www.wsj.com/finance',
+          'https://www.wsj.com/economy',
+          'https://www.wsj.com/world',
+          'https://www.wsj.com/business',
+          'https://www.wsj.com/politics',
+          'https://www.wsj.com/markets'
+        ];
+
+        for (let i = 0; i < sections.length; i += 3) {
+          const batch = sections.slice(i, i + 3);
+          const fetches = batch.map(async (url) => {
+            try {
+              const resp = await fetch(url, { credentials: 'include' });
+              const html = await resp.text();
+              const parser = new DOMParser();
+              const doc = parser.parseFromString(html, 'text/html');
+              collectLinks(doc);
+            } catch (e) {}
+          });
+          await Promise.all(fetches);
+        }
+
+        // Step 3: For top 50, fetch full article text
+        const top = articles.slice(0, 50);
+        const results = [];
+
+        for (let i = 0; i < top.length; i += 5) {
+          const batch = top.slice(i, i + 5);
+          const fetches = batch.map(async (article) => {
+            try {
+              const resp = await fetch(article.url, { credentials: 'include' });
+              const html = await resp.text();
+              const parser = new DOMParser();
+              const doc = parser.parseFromString(html, 'text/html');
+
+              let bodyText = '';
+              const bodyEl = doc.querySelector('article') ||
+                             doc.querySelector('[class*="article-body"]') ||
+                             doc.querySelector('[class*="ArticleBody"]');
+              if (bodyEl) {
+                const paragraphs = bodyEl.querySelectorAll('p');
+                bodyText = Array.from(paragraphs).map(p => p.textContent.trim()).filter(Boolean).join(' ');
+              }
+              if (!bodyText) {
+                const allP = doc.querySelectorAll('article p, main p, [role="main"] p');
+                bodyText = Array.from(allP).map(p => p.textContent.trim()).filter(Boolean).join(' ');
+              }
+
+              const preview = bodyText.substring(0, 1000);
+              return { ...article, preview };
+            } catch (e) {
+              return { ...article, preview: '' };
+            }
+          });
+          const batchResults = await Promise.all(fetches);
+          results.push(...batchResults);
+        }
+
+        // Append remaining without body text
+        for (let i = 50; i < articles.length; i++) {
+          results.push({ ...articles[i], preview: '' });
+        }
+
+        return JSON.stringify(results);
+      })()
+
+steps:
+  - goto: "https://www.wsj.com"
+    wait_for: "h3"
+    timeout_ms: 15000
+
+  - wait: 3000
+
+  - eval:
+      ref: extract_articles
+      save_as: items
+
+  - output:
+      items: "{{ items }}"

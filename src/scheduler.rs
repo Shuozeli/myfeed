@@ -3,7 +3,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::Utc;
+use futures::future;
 use pwright_bridge::Browser;
+use tokio::sync::Semaphore;
 use tracing::{error, info, warn};
 
 use serde::{Deserialize, Serialize};
@@ -40,6 +42,49 @@ where
     Ok(tokio::task::spawn_blocking(move || f(&db)).await??)
 }
 
+/// Crawl a single site with retry logic (3 attempts, 5s delay).
+/// Returns the final error if all attempts fail, or None on success.
+async fn crawl_site_with_retry(
+    config: &Arc<Config>,
+    db: &Arc<FeedDb>,
+    notifier: &Arc<dyn Notifier>,
+    site: &str,
+) -> Option<Box<dyn std::error::Error + Send + Sync>> {
+    let mut last_err = None;
+    for attempt in 1..=3 {
+        // Per-site timeout: 2 minutes max per attempt
+        let result = tokio::time::timeout(
+            Duration::from_secs(120),
+            crawl_site(config, db, notifier, site),
+        )
+        .await;
+
+        match result {
+            Ok(Ok(())) => {
+                return None; // Success
+            }
+            Ok(Err(e)) => {
+                if attempt < 3 {
+                    warn!(site, attempt, error = %e, "crawl failed, retrying in 5s");
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                }
+                last_err = Some(e);
+            }
+            Err(_) => {
+                let msg: Box<dyn std::error::Error + Send + Sync> =
+                    "crawl timed out after 120s".into();
+                if attempt < 3 {
+                    warn!(site, attempt, "crawl timed out, retrying in 5s");
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                }
+                last_err = Some(msg);
+            }
+        }
+    }
+    // All attempts failed
+    Some(last_err.unwrap_or_else(|| "unknown error".into()))
+}
+
 /// Main scheduler loop. Connects to Chrome, runs feed recipes on a timer.
 pub async fn run(config: Arc<Config>, db: Arc<FeedDb>, notifier: Arc<dyn Notifier>) -> ! {
     let interval = Duration::from_secs(config.crawl_interval_secs);
@@ -58,54 +103,37 @@ pub async fn run(config: Arc<Config>, db: Arc<FeedDb>, notifier: Arc<dyn Notifie
             warn!(error = %e, "failed to cleanup old events");
         }
 
-        for site in &config.enabled_sites {
-            let mut last_err = None;
-            for attempt in 1..=3 {
-                // Per-site timeout: 2 minutes max per attempt
-                let result = tokio::time::timeout(
-                    Duration::from_secs(120),
-                    crawl_site(&config, &db, &notifier, site),
-                )
-                .await;
+        // Crawl all sites in parallel (with semaphore limit)
+        let semaphore = Arc::new(Semaphore::new(5));
+        let sites = config.enabled_sites.clone();
+        let crawl_futures = sites.iter().map(|site| {
+            let config = Arc::clone(&config);
+            let db = Arc::clone(&db);
+            let notifier = Arc::clone(&notifier);
+            let sem = Arc::clone(&semaphore);
+            let site_str = site.to_string();
+            async move {
+                let permit = sem.acquire().await.unwrap();
+                let result = crawl_site_with_retry(&config, &db, &notifier, &site_str).await;
+                // Log error if any
+                if let Some(e) = result {
+                    error!(site = %site_str, error = %e, "crawl failed after 3 attempts");
+                    let event = CrawlErrorEvent {
+                        error: e.to_string(),
+                    };
+                    let details = serde_json::to_value(&event)
+                        .expect("serializing CrawlErrorEvent is infallible");
+                    if let Err(log_err) =
+                        db_blocking(&db, move |db| db.log_event("crawl_error", &site_str, &details)).await
+                    {
+                        warn!(error = %log_err, "failed to log crawl error to database");
+                    }
+                }
+                drop(permit);
+            }
+        });
 
-                match result {
-                    Ok(Ok(())) => {
-                        last_err = None;
-                        break;
-                    }
-                    Ok(Err(e)) => {
-                        if attempt < 3 {
-                            warn!(site, attempt, error = %e, "crawl failed, retrying in 5s");
-                            tokio::time::sleep(Duration::from_secs(5)).await;
-                        }
-                        last_err = Some(e);
-                    }
-                    Err(_) => {
-                        let msg: Box<dyn std::error::Error + Send + Sync> =
-                            "crawl timed out after 120s".into();
-                        if attempt < 3 {
-                            warn!(site, attempt, "crawl timed out, retrying in 5s");
-                            tokio::time::sleep(Duration::from_secs(5)).await;
-                        }
-                        last_err = Some(msg);
-                    }
-                }
-            }
-            if let Some(e) = last_err {
-                error!(site, error = %e, "crawl failed after 3 attempts");
-                let site = site.clone();
-                let event = CrawlErrorEvent {
-                    error: e.to_string(),
-                };
-                let details = serde_json::to_value(&event)
-                    .expect("serializing CrawlErrorEvent is infallible");
-                if let Err(log_err) =
-                    db_blocking(&db, move |db| db.log_event("crawl_error", &site, &details)).await
-                {
-                    warn!(error = %log_err, "failed to log crawl error to database");
-                }
-            }
-        }
+        future::join_all(crawl_futures).await;
 
         // Generate Atom feed if configured
         if let Some(ref path) = config.feed_output_path {
@@ -226,33 +254,30 @@ async fn crawl_with_page(
         db_blocking(db, move |db| db.save_snapshot(&snapshot)).await?;
     }
 
-    // Dedup check + insert: check first, then insert
+    // Dedup check + insert: atomic operation using insert_item_is_new
     let dedup_window = config.dedup_window_for(site);
     let mut new_items: Vec<proto::FeedItem> = Vec::new();
     for item in &items {
-        // Check dedup before inserting
-        let s = owned_site.clone();
-        let eid = item.id.clone();
-        let was_seen =
-            db_blocking(db, move |db| db.was_seen_recently(&s, &eid, dedup_window)).await?;
-
-        // Always insert (for snapshots/history)
         let raw = serde_json::to_value(item).expect("serializing proto FeedItem is infallible");
         let s = owned_site.clone();
         let db_item = item.clone();
-        db_blocking(db, move |db| {
-            db.insert_item(
+
+        // Atomically insert and determine if item is new (within dedup window)
+        // This is race-condition-free due to UNIQUE(site, external_id) constraint
+        let is_new = db_blocking(db, move |db| {
+            db.insert_item_is_new(
                 &s,
                 &db_item.id,
                 &db_item.title,
                 &db_item.url,
                 &db_item.preview,
                 &raw,
+                dedup_window,
             )
         })
         .await?;
 
-        if !was_seen {
+        if is_new {
             new_items.push(item.clone());
         }
     }

@@ -47,16 +47,23 @@ impl Notifier for StdoutNotifier {
 }
 
 /// Create a notifier from configuration. Falls back to StdoutNotifier if
-/// no Telegram credentials are provided.
+/// no Telegram credentials are provided or if Telegram client creation fails.
 pub fn create_notifier(config: &crate::config::Config) -> Arc<dyn Notifier> {
     if !config.telegram_bot_token.is_empty() && !config.telegram_chat_id.is_empty() {
-        let (sender, consumer) = crate::telegram::create_telegram_channel(
+        match crate::telegram::create_telegram_channel(
             config.telegram_bot_token.clone(),
             config.telegram_chat_id.clone(),
-        );
-        // Launch the consumer so queued messages are actually delivered.
-        tokio::spawn(consumer.run());
-        Arc::new(sender) as Arc<dyn Notifier>
+        ) {
+            Ok((sender, consumer)) => {
+                // Launch the consumer so queued messages are actually delivered.
+                tokio::spawn(consumer.run());
+                Arc::new(sender) as Arc<dyn Notifier>
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to create Telegram client, falling back to stdout");
+                Arc::new(StdoutNotifier) as Arc<dyn Notifier>
+            }
+        }
     } else {
         Arc::new(StdoutNotifier) as Arc<dyn Notifier>
     }

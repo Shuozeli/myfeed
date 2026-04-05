@@ -1,0 +1,42 @@
+# Test recipe: Reddit Mock
+# Works with the reddit demo server
+
+name: reddit-mock
+version: "1.0"
+
+steps:
+  - name: wait
+    action: waitForSelector
+    selector: ".post-list"
+
+scripts:
+  extract:
+    name: extract
+    script: |
+      function extract(page) {
+        const items = [];
+        const postEls = document.querySelectorAll('.post');
+        postEls.forEach((el, i) => {
+          const id = el.dataset.id || `reddit-${i + 1}`;
+          const linkEl = el.querySelector('h3 a');
+          const title = linkEl ? linkEl.textContent.trim() : '';
+          const url = linkEl ? linkEl.href : '';
+          const upvotesEl = el.querySelector('.upvotes');
+          const upvotes = upvotesEl ? upvotesEl.textContent.trim() : '0';
+          const metaEl = el.querySelector('.meta');
+          const meta = metaEl ? metaEl.textContent.trim() : '';
+          const commentsMatch = meta.match(/(\d+)\s*comments/);
+          const comments = commentsMatch ? parseInt(commentsMatch[1]) : 0;
+          const authorMatch = meta.match(/u\/(\w+)/);
+          const author = authorMatch ? authorMatch[1] : '';
+          items.push({
+            id,
+            title,
+            url,
+            upvotes,
+            comments,
+            author
+          });
+        });
+        return { items };
+      }

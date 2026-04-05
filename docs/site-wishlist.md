@@ -2,7 +2,7 @@
 
 Sites to add recipe support for. All are public content.
 
-## Currently Supported (32 sites: 26 public + 6 private)
+## Currently Supported (32 sites: 32 public + 0 private)
 
 | Site | Category | Recipe | Type |
 |------|----------|--------|------|
@@ -32,12 +32,12 @@ Sites to add recipe support for. All are public content.
 | Weibo Hot Search | Chinese Social | `weibo-hot-feed.yaml` | public |
 | Caixin | Chinese Finance News | `caixin-feed.yaml` | public |
 | Douban Groups | Chinese Discussion | `douban-feed.yaml` | public |
-| WSJ | Business/Finance | `private/wsj-feed.yaml` | private |
-| NYT | General News | `private/nyt-feed.yaml` | private |
-| Business Insider | Tech/Business | `private/businessinsider-feed.yaml` | private |
-| CLS (财联社) | Chinese Finance | `private/cls-feed.yaml` | private |
-| People's Daily | Chinese Policy | `private/peoplesdaily-feed.yaml` | private |
-| LatePost (晚点) | Chinese Tech | `private/latepost-feed.yaml` | private |
+| WSJ | Business/Finance | `wsj-feed.yaml` | public |
+| NYT | General News | `nyt-feed.yaml` | public |
+| Business Insider | Tech/Business | `businessinsider-feed.yaml` | public |
+| CLS (财联社) | Chinese Finance | `cls-feed.yaml` | public |
+| People's Daily | Chinese Policy | `peoplesdaily-feed.yaml` | public |
+| LatePost (晚点) | Chinese Tech | `latepost-feed.yaml` | public |
 
 ## Wishlist
 
