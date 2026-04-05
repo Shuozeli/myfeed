@@ -50,8 +50,7 @@ pub async fn validate(site: &str, config: &crate::config::Config) -> Result<(), 
     }
 
     // Parse the YAML
-    let script =
-        parser::parse_yaml_file(&recipe_path).map_err(|e| format!("parse error: {e}"))?;
+    let script = parser::parse_yaml_file(&recipe_path).map_err(|e| format!("parse error: {e}"))?;
 
     println!("Recipe: {}", script.name);
     println!("Path: {}", recipe_path.display());
@@ -100,7 +99,11 @@ pub async fn validate(site: &str, config: &crate::config::Config) -> Result<(), 
 
     // Show outputs
     for (i, output) in result.outputs.iter().enumerate() {
-        println!("  Output {}: {:?}", i + 1, output.keys().collect::<Vec<_>>());
+        println!(
+            "  Output {}: {:?}",
+            i + 1,
+            output.keys().collect::<Vec<_>>()
+        );
     }
 
     println!("\nValidation passed.");

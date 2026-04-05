@@ -108,14 +108,9 @@ pub async fn run_crawl(
                 for item in &items {
                     let raw =
                         serde_json::to_value(item).expect("serializing FeedItem is infallible");
-                    if let Err(e) = db.insert_item(
-                        site,
-                        &item.id,
-                        &item.title,
-                        &item.url,
-                        &item.preview,
-                        &raw,
-                    ) {
+                    if let Err(e) =
+                        db.insert_item(site, &item.id, &item.title, &item.url, &item.preview, &raw)
+                    {
                         error!(site, error = %e, "failed to insert item");
                     }
                 }
@@ -184,7 +179,10 @@ fn print_json(items: &[(&str, &proto::FeedItem)], compact: bool) {
         })
         .collect();
 
-    println!("{}", serde_json::to_string_pretty(&objects).unwrap_or_default());
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&objects).unwrap_or_default()
+    );
 }
 
 fn print_jsonl(items: &[(&str, &proto::FeedItem)], compact: bool) {

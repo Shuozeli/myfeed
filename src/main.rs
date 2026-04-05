@@ -187,7 +187,7 @@ async fn main() {
             save,
             notify,
         } => {
-            use cli::crawl::{run_crawl, OutputFormat};
+            use cli::crawl::{OutputFormat, run_crawl};
             let fmt: OutputFormat = format.parse().unwrap_or(OutputFormat::Json);
             let db_ref = if save { Some(db.as_ref()) } else { None };
             let notifier_ref = if notify { Some(&notifier) } else { None };

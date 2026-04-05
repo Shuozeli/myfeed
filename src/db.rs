@@ -185,8 +185,7 @@ impl FeedDb {
             } else {
                 // Check if the existing item is within the dedup window
                 let cutoff =
-                    (Utc::now() - chrono::Duration::hours(dedup_window_hours as i64))
-                        .to_rfc3339();
+                    (Utc::now() - chrono::Duration::hours(dedup_window_hours as i64)).to_rfc3339();
                 let is_fresh = diesel::select(diesel::dsl::exists(
                     feed_items::table
                         .filter(feed_items::site.eq(site))

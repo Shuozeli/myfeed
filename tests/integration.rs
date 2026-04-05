@@ -75,7 +75,10 @@ fn test_crawl_simple_feed_with_browser() {
     assert!(output.status.success(), "crawl should succeed");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("item-1") || stdout.contains("Test Article"), "should contain item data");
+    assert!(
+        stdout.contains("item-1") || stdout.contains("Test Article"),
+        "should contain item data"
+    );
 }
 
 #[test]
@@ -117,7 +120,11 @@ fn test_crawl_output_formats() {
     let jsonl_stdout = String::from_utf8_lossy(&jsonl_output.stdout);
     // Each line should be a valid JSON object
     for line in jsonl_stdout.lines().filter(|l| !l.is_empty()) {
-        assert!(line.starts_with("{") && line.ends_with("}"), "should be JSON object: {}", line);
+        assert!(
+            line.starts_with("{") && line.ends_with("}"),
+            "should be JSON object: {}",
+            line
+        );
     }
 
     // Test table format
@@ -149,7 +156,10 @@ fn test_crawl_compact_output() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     // Compact should NOT contain preview
-    assert!(!stdout.contains("preview"), "compact output should not have preview");
+    assert!(
+        !stdout.contains("preview"),
+        "compact output should not have preview"
+    );
     // But should have id, site, title, url
     assert!(stdout.contains("\"id\""), "should have id field");
     assert!(stdout.contains("\"title\""), "should have title field");
@@ -204,8 +214,14 @@ fn test_recipe_list_shows_recipes() {
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     // Should list available recipes
-    assert!(stdout.contains("Available recipes"), "should show recipe list header");
-    assert!(stdout.contains("hackernews"), "should list hackernews recipe");
+    assert!(
+        stdout.contains("Available recipes"),
+        "should show recipe list header"
+    );
+    assert!(
+        stdout.contains("hackernews"),
+        "should list hackernews recipe"
+    );
 }
 
 #[test]
@@ -229,10 +245,10 @@ fn test_recipe_validate_with_browser() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stdout.contains("Validation passed") ||
-        stdout.contains("Recipe:") ||
-        stderr.contains("error") ||
-        stderr.contains("Error"),
+        stdout.contains("Validation passed")
+            || stdout.contains("Recipe:")
+            || stderr.contains("error")
+            || stderr.contains("Error"),
         "should produce validation output"
     );
 }

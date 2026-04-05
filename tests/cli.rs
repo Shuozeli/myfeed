@@ -118,10 +118,10 @@ fn test_crawl_single_site() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     // Should either succeed or fail with Chrome connection error
     assert!(
-        stderr.contains("Chrome") ||
-        stderr.contains("connection") ||
-        stderr.contains("CDP") ||
-        output.status.success()
+        stderr.contains("Chrome")
+            || stderr.contains("connection")
+            || stderr.contains("CDP")
+            || output.status.success()
     );
 }
 
@@ -194,11 +194,15 @@ fn test_dump_default_args() {
     // Should work with defaults (24 hours, no site filter)
     let output = run_myfeed_ok(&["dump"]);
     // Should output valid JSON (may have log prefix, find the JSON part)
-    let has_json = output.contains("\"items\"") ||
-                   output.contains("\"mode\"") ||
-                   output.starts_with("{") ||
-                   output.starts_with("[");
-    assert!(has_json, "should be JSON: {}", &output[..output.len().min(200)]);
+    let has_json = output.contains("\"items\"")
+        || output.contains("\"mode\"")
+        || output.starts_with("{")
+        || output.starts_with("[");
+    assert!(
+        has_json,
+        "should be JSON: {}",
+        &output[..output.len().min(200)]
+    );
 }
 
 // =============================================================================
@@ -273,14 +277,20 @@ fn test_login_unknown_site() {
 fn test_crawl_with_chrome_hackernews() {
     let output = run_myfeed_ok(&["crawl", "hackernews", "--format", "json", "--limit", "3"]);
     // Should output JSON array
-    assert!(output.starts_with("[") || output.starts_with("{"), "should be JSON");
+    assert!(
+        output.starts_with("[") || output.starts_with("{"),
+        "should be JSON"
+    );
 }
 
 #[test]
 #[ignore]
 fn test_crawl_with_chrome_reddit() {
     let output = run_myfeed_ok(&["crawl", "reddit", "--format", "json", "--limit", "3"]);
-    assert!(output.starts_with("[") || output.starts_with("{"), "should be JSON");
+    assert!(
+        output.starts_with("[") || output.starts_with("{"),
+        "should be JSON"
+    );
 }
 
 #[test]
@@ -294,9 +304,7 @@ fn test_recipe_validate_with_chrome() {
 #[test]
 #[ignore]
 fn test_crawl_save_to_db() {
-    let _output = run_myfeed_ok(&[
-        "crawl", "hackernews", "--save", "--limit", "5",
-    ]);
+    let _output = run_myfeed_ok(&["crawl", "hackernews", "--save", "--limit", "5"]);
     // Should have saved items - check list command
     let list_output = run_myfeed_ok(&["list", "--site", "hackernews", "--limit", "10"]);
     assert!(list_output.contains("hackernews") || list_output.contains("no items"));

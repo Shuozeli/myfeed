@@ -123,8 +123,10 @@ pub async fn run(config: Arc<Config>, db: Arc<FeedDb>, notifier: Arc<dyn Notifie
                     };
                     let details = serde_json::to_value(&event)
                         .expect("serializing CrawlErrorEvent is infallible");
-                    if let Err(log_err) =
-                        db_blocking(&db, move |db| db.log_event("crawl_error", &site_str, &details)).await
+                    if let Err(log_err) = db_blocking(&db, move |db| {
+                        db.log_event("crawl_error", &site_str, &details)
+                    })
+                    .await
                     {
                         warn!(error = %log_err, "failed to log crawl error to database");
                     }
