@@ -176,7 +176,7 @@ fn test_crawl_save_to_db() {
     // First crawl with save
     let binary = env!("CARGO_BIN_EXE_myfeed");
     let output = Command::new(binary)
-        .args(&["crawl", "--save", "--limit", "3", "simple-feed"])
+        .args(["crawl", "--save", "--limit", "3", "simple-feed"])
         .output()
         .expect("failed to execute myfeed crawl");
 
@@ -187,7 +187,7 @@ fn test_crawl_save_to_db() {
 
     // Then list to verify saved
     let list_output = Command::new(binary)
-        .args(&["list", "--limit", "10"])
+        .args(["list", "--limit", "10"])
         .output()
         .expect("failed to execute myfeed list");
 
@@ -207,7 +207,7 @@ fn test_crawl_save_to_db() {
 fn test_recipe_list_shows_recipes() {
     let binary = env!("CARGO_BIN_EXE_myfeed");
     let output = Command::new(binary)
-        .args(&["recipe", "list"])
+        .args(["recipe", "list"])
         .output()
         .expect("failed to execute myfeed recipe list");
 
@@ -234,7 +234,7 @@ fn test_recipe_validate_with_browser() {
 
     let binary = env!("CARGO_BIN_EXE_myfeed");
     let output = Command::new(binary)
-        .args(&["recipe", "validate", "hackernews"])
+        .args(["recipe", "validate", "hackernews"])
         .output()
         .expect("failed to execute recipe validate");
 
