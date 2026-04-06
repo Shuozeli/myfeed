@@ -92,7 +92,7 @@ fn test_crawl_simple_feed_with_browser() {
         return;
     }
 
-    let output = run_crawl(&["simple-feed"], "json");
+    let output = run_crawl(&["hackernews"], "json");
     if !output.status.success() {
         eprintln!("stdout: {}", String::from_utf8_lossy(&output.stdout));
         eprintln!("stderr: {}", String::from_utf8_lossy(&output.stderr));
@@ -134,7 +134,7 @@ fn test_crawl_output_formats() {
     }
 
     // Test JSON format
-    let json_output = run_crawl(&["simple-feed"], "json");
+    let json_output = run_crawl(&["hackernews"], "json");
     assert!(json_output.status.success());
     let json_stdout = String::from_utf8_lossy(&json_output.stdout);
     // Filter out log lines to find actual JSON
@@ -149,7 +149,7 @@ fn test_crawl_output_formats() {
     );
 
     // Test JSONL format
-    let jsonl_output = run_crawl(&["simple-feed"], "jsonl");
+    let jsonl_output = run_crawl(&["hackernews"], "jsonl");
     assert!(jsonl_output.status.success());
     let jsonl_stdout = String::from_utf8_lossy(&jsonl_output.stdout);
     // Each line should be a valid JSON object (filter out log lines)
@@ -158,7 +158,7 @@ fn test_crawl_output_formats() {
     }
 
     // Test table format
-    let table_output = run_crawl(&["simple-feed"], "table");
+    let table_output = run_crawl(&["hackernews"], "table");
     assert!(table_output.status.success());
     let table_stdout = String::from_utf8_lossy(&table_output.stdout);
     // Table format should contain site prefix with brackets
@@ -177,7 +177,7 @@ fn test_crawl_compact_output() {
     }
 
     // Use run_crawl to properly set RECIPES_DIR and DATABASE_URL
-    let output = run_crawl(&["simple-feed"], "json");
+    let output = run_crawl(&["hackernews"], "json");
 
     if !output.status.success() {
         eprintln!("stderr: {}", String::from_utf8_lossy(&output.stderr));
@@ -206,7 +206,7 @@ fn test_crawl_save_to_db() {
     // First crawl with save
     let binary = env!("CARGO_BIN_EXE_myfeed");
     let output = Command::new(binary)
-        .args(["crawl", "--save", "--limit", "3", "simple-feed"])
+        .args(["crawl", "--save", "--limit", "3", "hackernews"])
         .output()
         .expect("failed to execute myfeed crawl");
 
@@ -224,7 +224,7 @@ fn test_crawl_save_to_db() {
     let stdout = String::from_utf8_lossy(&list_output.stdout);
     // Should show items or say "no items found"
     assert!(
-        stdout.contains("simple-feed") || stdout.contains("no items"),
+        stdout.contains("hackernews") || stdout.contains("no items"),
         "should have saved items or show message"
     );
 }
