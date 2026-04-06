@@ -120,7 +120,7 @@ jobs:
             -e ENABLED_SITES=hackernews,reddit \
             -v "$(pwd):/app" \
             myfeed:test \
-            cargo test --test integration -- --ignored --nocapture
+            cargo test --test integration -- --ignored --nocapture --test-threads=1
 
       - name: Cleanup
         if: always()
