@@ -36,16 +36,20 @@ fn run_crawl(sites: &[&str], format: &str) -> Output {
         cmd.env("RECIPES_DIR", cwd.join("recipes"));
     }
     // Use unique temp database per subprocess to avoid SQLite locking
-    // Use /app as temp dir since /tmp might have filesystem locking issues in Docker
-    let db_path = std::env::temp_dir().join(format!(
+    // Use /app as temp dir since /tmp in Docker (tmpfs) can have SQLite locking issues
+    let db_path = std::path::Path::new("/app").join(format!(
         "myfeed_test_{}_{}.db",
         std::process::id(),
         uuid_simple()
     ));
-    // Remove any stale journal files first
+    // Remove any stale database/journal files first
     let _ = std::fs::remove_file(&db_path);
     let journal_path = format!("{}-journal", db_path.to_string_lossy());
     let _ = std::fs::remove_file(journal_path.as_str());
+    let wal_path = format!("{}-wal", db_path.to_string_lossy());
+    let _ = std::fs::remove_file(wal_path.as_str());
+    let shm_path = format!("{}-shm", db_path.to_string_lossy());
+    let _ = std::fs::remove_file(shm_path.as_str());
     cmd.env(
         "DATABASE_URL",
         format!("sqlite:///{}", db_path.to_string_lossy()),
