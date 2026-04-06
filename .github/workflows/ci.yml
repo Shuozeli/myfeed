@@ -61,7 +61,7 @@ jobs:
           TELEGRAM_CHAT_ID: "0"
           CRAWL_INTERVAL_SECS: "3600"
           ENABLED_SITES: hackernews,reddit
-        run: cargo test --lib --test cli
+        run: cargo test --test cli
 
   integration-test:
     name: Integration Tests (Lightpanda)
