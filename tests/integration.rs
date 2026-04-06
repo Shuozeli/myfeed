@@ -28,27 +28,11 @@ fn run_crawl(sites: &[&str], format: &str) -> Output {
     if let Ok(cwd) = std::env::current_dir() {
         cmd.env("RECIPES_DIR", cwd.join("recipes"));
     }
-    // Use unique temp database per subprocess to avoid SQLite locking
-    // Use /dev/shm (shared memory) for better SQLite performance in Docker
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let db_name = format!("myfeed_test_{}_{}.db", std::process::id(), timestamp);
-    let db_path = std::path::Path::new("/dev/shm").join(&db_name);
-    // Clean up any existing files first
-    let _ = std::fs::remove_file(&db_path);
-    let _ = std::fs::remove_file(format!("/dev/shm/{}-journal", db_name));
-    let _ = std::fs::remove_file(format!("/dev/shm/{}-wal", db_name));
-    let _ = std::fs::remove_file(format!("/dev/shm/{}-shm", db_name));
-    // Pre-create the database file by opening and closing it
-    // This ensures the file is properly initialized before subprocess runs
-    use std::io::Write;
-    if let Ok(mut file) = std::fs::File::create(&db_path) {
-        // Write SQLite magic header to ensure file is recognized
-        let _ = file.write_all(b"SQLite format 3\0");
+    // Use CI-provided DATABASE_URL to avoid Docker filesystem issues
+    // The CI provides DATABASE_URL=sqlite:///tmp/myfeed_test.db
+    if let Ok(db_url) = std::env::var("DATABASE_URL") {
+        cmd.env("DATABASE_URL", db_url);
     }
-    cmd.env("DATABASE_URL", format!("sqlite:///dev/shm/{}", db_name));
     // Pass through required env vars from CI
     if let Ok(cdp) = std::env::var("CDP_ENDPOINT") {
         cmd.env("CDP_ENDPOINT", cdp);
