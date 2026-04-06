@@ -36,20 +36,21 @@ fn run_crawl(sites: &[&str], format: &str) -> Output {
         cmd.env("RECIPES_DIR", cwd.join("recipes"));
     }
     // Use unique temp database per subprocess to avoid SQLite locking
-    // Use /tmp with proper cleanup
-    let db_path = std::env::temp_dir().join(format!(
-        "myfeed_test_{}_{}.db",
-        std::process::id(),
-        uuid_simple()
-    ));
-    // Clean up all possible SQLite artifacts
-    let db_str = db_path.to_string_lossy().to_string();
-    for suffix in &["", "-journal", "-wal", "-shm", "-lock"] {
-        let _ = std::fs::remove_file(format!("{}{}", db_str, suffix));
-    }
+    // Use /tmp with a simple predictable path
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let db_name = format!("myfeed_test_{}_{}.db", std::process::id(), timestamp);
+    let db_path = std::path::Path::new("/tmp").join(&db_name);
+    // Clean up any existing files with same name prefix
+    let _ = std::fs::remove_file(&db_path);
+    let _ = std::fs::remove_file(format!("/tmp/{}-journal", db_name));
+    let _ = std::fs::remove_file(format!("/tmp/{}-wal", db_name));
+    let _ = std::fs::remove_file(format!("/tmp/{}-shm", db_name));
     cmd.env(
         "DATABASE_URL",
-        format!("sqlite:///{}", db_path.to_string_lossy()),
+        format!("sqlite:///tmp/{}", db_name),
     );
     // Pass through required env vars from CI
     if let Ok(cdp) = std::env::var("CDP_ENDPOINT") {
