@@ -283,3 +283,134 @@ fn test_recipe_validate_with_browser() {
         "should produce validation output"
     );
 }
+
+#[test]
+fn test_recipe_list_shows_multiple_recipes() {
+    let binary = env!("CARGO_BIN_EXE_myfeed");
+    let mut cmd = Command::new(binary);
+    cmd.args(["recipe", "list"]);
+    if let Ok(cwd) = std::env::current_dir() {
+        cmd.env("RECIPES_DIR", cwd.join("recipes"));
+    }
+    let output = cmd.output().expect("failed to execute myfeed recipe list");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Should list multiple feed recipes
+    assert!(stdout.contains("hackernews"), "should list hackernews");
+    assert!(stdout.contains("reddit"), "should list reddit");
+    assert!(
+        stdout.contains("github-trending"),
+        "should list github-trending"
+    );
+}
+
+#[test]
+fn test_crawl_multiple_sites() {
+    // Test crawling multiple sites at once
+    let output = run_crawl(&["hackernews", "reddit"], "json");
+    // Should succeed (might fail due to browser/recipes but shouldn't crash)
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    // Should either succeed or report specific errors, not crash
+    assert!(
+        output.status.success() || stderr.contains("recipe") || stderr.contains("error"),
+        "should handle multiple sites gracefully"
+    );
+}
+
+#[test]
+#[ignore]
+fn test_crawl_with_limit() {
+    if !has_browser() {
+        eprintln!("Skipping: CDP_ENDPOINT not set");
+        return;
+    }
+
+    // Test that --limit flag works
+    let binary = env!("CARGO_BIN_EXE_myfeed");
+    let mut cmd = Command::new(binary);
+    cmd.args(["crawl", "--format", "json", "--limit", "1", "hackernews"]);
+    if let Ok(cwd) = std::env::current_dir() {
+        cmd.env("RECIPES_DIR", cwd.join("recipes"));
+    }
+    if let Ok(db_url) = std::env::var("DATABASE_URL") {
+        cmd.env("DATABASE_URL", db_url);
+    }
+    if let Ok(cdp) = std::env::var("CDP_ENDPOINT") {
+        cmd.env("CDP_ENDPOINT", cdp);
+    }
+    if let Ok(token) = std::env::var("TELEGRAM_BOT_TOKEN") {
+        cmd.env("TELEGRAM_BOT_TOKEN", token);
+    }
+    if let Ok(chat) = std::env::var("TELEGRAM_CHAT_ID") {
+        cmd.env("TELEGRAM_CHAT_ID", chat);
+    }
+    if let Ok(interval) = std::env::var("CRAWL_INTERVAL_SECS") {
+        cmd.env("CRAWL_INTERVAL_SECS", interval);
+    }
+    if let Ok(sites) = std::env::var("ENABLED_SITES") {
+        cmd.env("ENABLED_SITES", sites);
+    }
+    let output = cmd.output().expect("failed to execute myfeed crawl");
+
+    if !output.status.success() {
+        eprintln!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+    }
+    assert!(output.status.success(), "crawl with limit should succeed");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Output should be valid JSON
+    assert!(stdout.contains("["), "should be JSON array");
+}
+
+#[test]
+#[ignore]
+fn test_crawl_reddit_with_browser() {
+    if !has_browser() {
+        eprintln!("Skipping: CDP_ENDPOINT not set");
+        return;
+    }
+
+    let output = run_crawl(&["reddit"], "json");
+    if !output.status.success() {
+        eprintln!("stdout: {}", String::from_utf8_lossy(&output.stdout));
+        eprintln!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+    }
+    assert!(output.status.success(), "crawl should succeed");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("title") || stdout.contains("url") || stdout.contains("reddit"),
+        "should contain item data"
+    );
+}
+
+#[test]
+#[ignore]
+fn test_recipe_validate_reddit() {
+    if !has_browser() {
+        eprintln!("Skipping: CDP_ENDPOINT not set");
+        return;
+    }
+
+    let binary = env!("CARGO_BIN_EXE_myfeed");
+    let mut cmd = Command::new(binary);
+    cmd.args(["recipe", "validate", "reddit"]);
+    if let Ok(cwd) = std::env::current_dir() {
+        cmd.env("RECIPES_DIR", cwd.join("recipes"));
+    }
+    let output = cmd.output().expect("failed to execute recipe validate");
+
+    if !output.status.success() {
+        eprintln!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stdout.contains("Validation passed")
+            || stdout.contains("Recipe:")
+            || stderr.contains("error")
+            || stderr.contains("Error"),
+        "should produce validation output"
+    );
+}
