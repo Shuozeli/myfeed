@@ -3,6 +3,12 @@ description: "Extract trending repositories from GitHub with stars, language, an
 version: 1
 type: query
 
+auth:
+  required: false
+  type: none
+  strategy: public
+  notes: "GitHub trending page is publicly accessible."
+
 config:
   default_timeout_ms: 60000
   default_on_error: continue

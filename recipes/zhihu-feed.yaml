@@ -3,6 +3,12 @@ description: "Extract hot questions and articles from Zhihu with preview content
 version: 1
 type: query
 
+auth:
+  required: true
+  type: cookie
+  strategy: cookie
+  notes: "Zhihu requires login cookie for full content. Hot listing may work without login but detailed content requires auth."
+
 config:
   default_timeout_ms: 60000
   default_on_error: continue

@@ -2,6 +2,13 @@ name: "Finviz News Feed"
 description: "Extract market news headlines from Finviz with article previews"
 version: 2
 type: query
+
+auth:
+  required: false
+  type: none
+  strategy: public
+  notes: "Finviz is a public financial site with free news and market data."
+
 config:
   default_timeout_ms: 60000
   default_on_error: continue

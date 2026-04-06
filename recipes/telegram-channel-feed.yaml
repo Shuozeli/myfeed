@@ -3,6 +3,12 @@ description: "Extract messages from any public Telegram channel web view"
 version: 1
 type: query
 
+auth:
+  required: false
+  type: none
+  strategy: public
+  notes: "Telegram public channels via t.me web view are publicly accessible. Private channels require auth."
+
 params:
   url:
     type: string

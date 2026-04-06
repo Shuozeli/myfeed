@@ -3,6 +3,12 @@ description: "Extract top posts from Reddit with post body content"
 version: 1
 type: query
 
+auth:
+  required: true
+  type: cookie
+  strategy: cookie
+  notes: "Reddit requires login cookie for full content. Without auth, only titles load. Use `myfeed login reddit` first."
+
 config:
   default_timeout_ms: 60000
   default_on_error: continue

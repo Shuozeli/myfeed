@@ -3,6 +3,12 @@ description: "Extract latest threads with post content from 1point3acres forum"
 version: 1
 type: query
 
+auth:
+  required: false
+  type: none
+  strategy: public
+  notes: "1point3acres forum listings are public. Some premium content may require login."
+
 config:
   default_timeout_ms: 60000
   default_on_error: continue

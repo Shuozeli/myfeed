@@ -3,6 +3,12 @@ description: "Extract articles from 36Kr with body content"
 version: 1
 type: query
 
+auth:
+  required: false
+  type: none
+  strategy: public
+  notes: "36Kr article listings are public. Full article body may have paywall."
+
 config:
   default_timeout_ms: 60000
   default_on_error: continue

@@ -2,6 +2,13 @@ name: "Tildes Feed"
 description: "Extract topics from Tildes"
 version: 1
 type: query
+
+auth:
+  required: false
+  type: none
+  strategy: public
+  notes: "Tildes is an open-source platform. Topics and content are publicly accessible."
+
 config:
   default_timeout_ms: 20000
   default_on_error: continue

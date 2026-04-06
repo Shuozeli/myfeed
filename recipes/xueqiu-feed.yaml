@@ -3,6 +3,12 @@ description: "Extract posts and market discussions from Xueqiu with engagement m
 version: 2
 type: query
 
+auth:
+  required: true
+  type: cookie
+  strategy: cookie
+  notes: "Xueqiu requires login for most content. Public stock pages may work without login."
+
 config:
   default_timeout_ms: 20000
   default_on_error: continue

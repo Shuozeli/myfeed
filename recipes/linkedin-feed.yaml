@@ -3,6 +3,12 @@ description: "Extract posts from LinkedIn home feed with full text and engagemen
 version: 3
 type: query
 
+auth:
+  required: true
+  type: cookie
+  strategy: cookie
+  notes: "LinkedIn requires login. Feed page is only visible to authenticated users. Use `myfeed login linkedin` first."
+
 config:
   default_timeout_ms: 30000
   default_on_error: continue

@@ -2,6 +2,13 @@ name: "Weibo Hot Search Feed"
 description: "Extract trending topics from Weibo hot search"
 version: 2
 type: query
+
+auth:
+  required: false
+  type: none
+  strategy: public
+  notes: "Weibo hot search is publicly accessible. No login required."
+
 config:
   default_timeout_ms: 20000
   default_on_error: continue

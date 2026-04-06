@@ -2,6 +2,13 @@ name: "Futunn Feed"
 description: "Extract financial news from Futunn (富途) with full content"
 version: 3
 type: query
+
+auth:
+  required: false
+  type: none
+  strategy: public
+  notes: "Futunn is a public financial news site."
+
 config:
   default_timeout_ms: 60000
   default_on_error: continue

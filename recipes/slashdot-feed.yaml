@@ -2,6 +2,13 @@ name: "Slashdot Feed"
 description: "Extract stories from Slashdot"
 version: 1
 type: query
+
+auth:
+  required: false
+  type: none
+  strategy: public
+  notes: "Slashdot is a public tech news site."
+
 config:
   default_timeout_ms: 20000
   default_on_error: continue

@@ -3,6 +3,12 @@ description: "Extract articles from LatePost homepage with article content"
 version: 1
 type: query
 
+auth:
+  required: false
+  type: none
+  strategy: public
+  notes: "LatePost is a public news site but may have paywall for full articles."
+
 config:
   default_timeout_ms: 60000
   default_on_error: continue

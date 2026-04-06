@@ -3,6 +3,12 @@ description: "Extract hot topics from V2EX with first post content"
 version: 1
 type: query
 
+auth:
+  required: false
+  type: none
+  strategy: public
+  notes: "V2EX hot topics are publicly accessible."
+
 config:
   default_timeout_ms: 60000
   default_on_error: continue

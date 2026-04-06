@@ -3,6 +3,12 @@ description: "Extract news articles from Caixin (财新)"
 version: 2
 type: query
 
+auth:
+  required: false
+  type: none
+  strategy: public
+  notes: "Caixin is a public news site but may have paywall for full articles."
+
 config:
   default_timeout_ms: 60000
   default_on_error: continue

@@ -2,6 +2,13 @@ name: "East Money Feed"
 description: "Extract trending stock discussions from East Money (股吧) with full content"
 version: 3
 type: query
+
+auth:
+  required: false
+  type: none
+  strategy: public
+  notes: "East Money stock discussions are publicly accessible."
+
 config:
   default_timeout_ms: 60000
   default_on_error: continue

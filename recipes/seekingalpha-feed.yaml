@@ -2,6 +2,13 @@ name: "Seeking Alpha Feed"
 description: "Extract articles from Seeking Alpha with full content"
 version: 2
 type: query
+
+auth:
+  required: false
+  type: none
+  strategy: public
+  notes: "Seeking Alpha article listings are public. Premium content requires subscription."
+
 config:
   default_timeout_ms: 60000
   default_on_error: continue

@@ -3,6 +3,12 @@ description: "Extract articles from CLS (财联社) homepage with article conten
 version: 1
 type: query
 
+auth:
+  required: false
+  type: none
+  strategy: public
+  notes: "CLS (财联社) is a public financial news site."
+
 config:
   default_timeout_ms: 60000
   default_on_error: continue

@@ -3,6 +3,12 @@ description: "Extract today's articles from People's Daily (人民日报)"
 version: 2
 type: query
 
+auth:
+  required: false
+  type: none
+  strategy: public
+  notes: "People's Daily is a public government news site."
+
 config:
   default_timeout_ms: 60000
   default_on_error: continue

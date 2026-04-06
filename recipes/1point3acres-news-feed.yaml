@@ -3,6 +3,12 @@ description: "Extract flash news (地里快讯) from 1point3acres"
 version: 1
 type: query
 
+auth:
+  required: false
+  type: none
+  strategy: public
+  notes: "1point3acres news listings are public."
+
 config:
   default_timeout_ms: 60000
   default_on_error: continue

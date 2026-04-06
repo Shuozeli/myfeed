@@ -2,6 +2,13 @@ name: "Douban Groups Feed"
 description: "Extract discussion topics from Douban Groups"
 version: 1
 type: query
+
+auth:
+  required: false
+  type: none
+  strategy: public
+  notes: "Douban groups listing is public. Full post content may require login."
+
 config:
   default_timeout_ms: 60000
   default_on_error: continue

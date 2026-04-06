@@ -2,6 +2,13 @@ name: "Substack Discover Feed"
 description: "Extract trending posts from Substack discover with author and publication"
 version: 2
 type: query
+
+auth:
+  required: false
+  type: none
+  strategy: public
+  notes: "Substack discover page is public. Some posts may require subscription to read full content."
+
 config:
   default_timeout_ms: 60000
   default_on_error: continue

@@ -3,6 +3,12 @@ description: "Extract tweets from X (Twitter) home timeline with full text and e
 version: 2
 type: query
 
+auth:
+  required: true
+  type: cookie
+  strategy: cookie
+  notes: "X home timeline requires login. Public tweets can be scraped from trending/search pages without login."
+
 config:
   default_timeout_ms: 20000
   default_on_error: continue

@@ -3,6 +3,12 @@ description: "Extract stories from New York Times homepage and section pages"
 version: 2
 type: query
 
+auth:
+  required: false
+  type: none
+  strategy: public
+  notes: "NYT homepage is public but full article content may require subscription. Headlines and excerpts are accessible."
+
 config:
   default_timeout_ms: 120000
   default_on_error: continue

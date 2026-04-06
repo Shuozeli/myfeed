@@ -2,6 +2,13 @@ name: "Xueqiu Topics Feed"
 description: "Extract today's hot discussions from Xueqiu"
 version: 2
 type: query
+
+auth:
+  required: true
+  type: cookie
+  strategy: cookie
+  notes: "Xueqiu requires login for hot discussions."
+
 config:
   default_timeout_ms: 20000
   default_on_error: continue

@@ -3,6 +3,12 @@ description: "Extract articles from Business Insider homepage and section pages"
 version: 4
 type: query
 
+auth:
+  required: false
+  type: none
+  strategy: public
+  notes: "Business Insider homepage is public. Some articles may require subscription."
+
 config:
   default_timeout_ms: 120000
   default_on_error: continue

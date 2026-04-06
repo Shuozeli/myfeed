@@ -3,6 +3,12 @@ description: "Extract top stories from Hacker News with scores, comment counts, 
 version: 1
 type: query
 
+auth:
+  required: false
+  type: none
+  strategy: public
+  notes: "Uses Hacker News Firebase API and public DOM. No login required."
+
 config:
   default_timeout_ms: 60000
   default_on_error: continue

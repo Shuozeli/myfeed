@@ -3,6 +3,12 @@ description: "Extract articles and news from InfoQ with summaries from article p
 version: 1
 type: query
 
+auth:
+  required: false
+  type: none
+  strategy: public
+  notes: "InfoQ is a public tech news site."
+
 config:
   default_timeout_ms: 60000
   default_on_error: continue

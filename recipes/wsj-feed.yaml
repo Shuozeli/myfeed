@@ -3,6 +3,12 @@ description: "Extract stories from Wall Street Journal homepage and section page
 version: 1
 type: query
 
+auth:
+  required: false
+  type: none
+  strategy: public
+  notes: "WSJ homepage is public. Most articles require subscription but headlines are accessible."
+
 config:
   default_timeout_ms: 120000
   default_on_error: continue

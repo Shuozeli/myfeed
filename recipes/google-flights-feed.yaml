@@ -1,0 +1,167 @@
+name: "Google Flights Feed"
+description: "Monitor flight prices between two cities on Google Flights"
+version: 3
+type: query
+
+# Parameters for customization
+params:
+  origin:
+    type: string
+    required: false
+    default: "San Francisco"
+  destination:
+    type: string
+    required: false
+    default: "Beijing"
+  trip_type:
+    type: string
+    required: false
+    default: "round trip"
+  month:
+    type: string
+    required: false
+    default: "april"
+
+auth:
+  required: false
+  type: none
+  strategy: public
+  notes: "Google Flights is publicly accessible."
+
+config:
+  default_timeout_ms: 60000
+  default_on_error: continue
+
+scripts:
+  extract_flights:
+    async: true
+    body: |
+      (async () => {
+        const items = [];
+
+        // Wait for flight results to load
+        await new Promise(r => setTimeout(r, 8000));
+
+        const bodyText = document.body.innerText;
+
+        // Known airlines
+        const airlinePatterns = [
+          { name: 'Delta', pattern: /delta airlines|delta air lines/i },
+          { name: 'American', pattern: /american airlines/i },
+          { name: 'United', pattern: /united airlines/i },
+          { name: 'Alaska', pattern: /alaska airlines/i },
+          { name: 'JetBlue', pattern: /jetblue/i },
+          { name: 'Lufthansa', pattern: /lufthansa/i },
+          { name: 'Air France', pattern: /air france/i },
+          { name: 'British', pattern: /british airways/i },
+          { name: 'Virgin', pattern: /virgin atlantic/i },
+          { name: 'Emirates', pattern: /emirates/i },
+          { name: 'Qatar', pattern: /qatar airways/i },
+          { name: 'Iberia', pattern: /iberia/i },
+          { name: 'AeroMexico', pattern: /aero.?mexico/i },
+          { name: 'Korean Air', pattern: /korean air/i },
+          { name: 'ANA', pattern: /ana|all nippon/i },
+          { name: 'JAL', pattern: /japan airlines|jal/i },
+          { name: 'China Eastern', pattern: /china eastern/i },
+          { name: 'China Southern', pattern: /china southern/i },
+          { name: 'Air China', pattern: /air china/i },
+          { name: 'XiamenAir', pattern: /xiamenair/i },
+          { name: 'Hainan', pattern: /hainan airlines/i },
+        ];
+
+        // Find each airline's position in the text
+        const airlinePositions = [];
+        for (const ap of airlinePatterns) {
+          let match;
+          const regex = new RegExp(ap.pattern.source, 'gi');
+          while ((match = regex.exec(bodyText)) !== null) {
+            airlinePositions.push({ name: ap.name, pos: match.index });
+          }
+        }
+
+        // Find all prices
+        const priceRegex = /\$[\d,]+/g;
+        const prices = [];
+        let priceMatch;
+        while ((priceMatch = priceRegex.exec(bodyText)) !== null) {
+          const priceNum = parseInt(priceMatch[0].replace(/[$,]/g, ''));
+          prices.push({ value: priceMatch[0], pos: priceMatch.index, num: priceNum });
+        }
+
+        // Extract times
+        const timeRegex = /\d{1,2}:\d{2}\s*(?:AM|PM)?/gi;
+        const times = [];
+        let timeMatch;
+        while ((timeMatch = timeRegex.exec(bodyText)) !== null) {
+          times.push({ value: timeMatch[0], pos: timeMatch.index });
+        }
+
+        // Process each price: require airline match and reasonable price
+        for (const price of prices) {
+          // Skip prices < $200 for international routes
+          if (price.num < 200) continue;
+
+          // Find nearest airline within reasonable distance
+          let airline = 'Unknown';
+          let minDist = Infinity;
+          for (const ap of airlinePositions) {
+            const dist = price.pos - ap.pos;
+            if (dist > 0 && dist < minDist && dist < 3000) {
+              minDist = dist;
+              airline = ap.name;
+            }
+          }
+
+          // Skip if no airline found
+          if (airline === 'Unknown') continue;
+
+          // Find times near this price
+          const nearbyTimes = times
+            .filter(t => Math.abs(t.pos - price.pos) < 800)
+            .slice(0, 2)
+            .map(t => t.value);
+
+          // Check for nonstop within context
+          const contextStart = Math.max(0, price.pos - 500);
+          const contextEnd = Math.min(bodyText.length, price.pos + 500);
+          const context = bodyText.substring(contextStart, contextEnd);
+          const isNonstop = /nonstop|non.?stop|non‑stop/i.test(context);
+
+          // Look for duration
+          const durationMatch = context.match(/(\d+h\s*\d+m)/i);
+          const duration = durationMatch ? durationMatch[1] : '';
+
+          items.push({
+            id: `flight-${items.length}`,
+            title: `${airline} - ${price.value}${isNonstop ? ' • Nonstop' : ''}`,
+            url: window.location.href,
+            preview: `Airline: ${airline} | Price: ${price.value} | Times: ${nearbyTimes.join(', ') || 'N/A'} | ${isNonstop ? 'Nonstop' : ''} ${duration}`.trim()
+          });
+        }
+
+        // Dedupe by price
+        const seen = new Set();
+        const deduped = items.filter(item => {
+          const pm = item.title.match(/\$[\d,]+/);
+          if (!pm) return false;
+          if (seen.has(pm[0])) return false;
+          seen.add(pm[0]);
+          return true;
+        });
+
+        return JSON.stringify(deduped.slice(0, 30));
+      })()
+
+steps:
+  - goto: "https://www.google.com/travel/flights?q=flights+from+{{origin}}+to+{{destination}}+{{month}}"
+    wait_for: "body"
+    timeout_ms: 15000
+
+  - wait: 5000
+
+  - eval:
+      ref: extract_flights
+      save_as: items
+
+  - output:
+      items: "{{ items }}"

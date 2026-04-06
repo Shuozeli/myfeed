@@ -1,6 +1,13 @@
 name: "Telegram @telegram"
 version: 1
 type: query
+
+auth:
+  required: false
+  type: none
+  strategy: public
+  notes: "Public Telegram channel via t.me web view."
+
 config:
   default_timeout_ms: 20000
   default_on_error: continue
