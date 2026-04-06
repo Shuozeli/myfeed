@@ -10,13 +10,6 @@
 
 use std::process::{Command, Output};
 
-/// Generate a simple unique ID for temp database names
-fn uuid_simple() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let dur = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-    format!("{:x}-{:x}", dur.as_secs(), dur.subsec_nanos())
-}
-
 /// Check if CDP_ENDPOINT is configured
 fn has_browser() -> bool {
     std::env::var("CDP_ENDPOINT").is_ok()
@@ -48,10 +41,7 @@ fn run_crawl(sites: &[&str], format: &str) -> Output {
     let _ = std::fs::remove_file(format!("/tmp/{}-journal", db_name));
     let _ = std::fs::remove_file(format!("/tmp/{}-wal", db_name));
     let _ = std::fs::remove_file(format!("/tmp/{}-shm", db_name));
-    cmd.env(
-        "DATABASE_URL",
-        format!("sqlite:///tmp/{}", db_name),
-    );
+    cmd.env("DATABASE_URL", format!("sqlite:///tmp/{}", db_name));
     // Pass through required env vars from CI
     if let Ok(cdp) = std::env::var("CDP_ENDPOINT") {
         cmd.env("CDP_ENDPOINT", cdp);
