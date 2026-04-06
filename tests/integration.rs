@@ -29,19 +29,19 @@ fn run_crawl(sites: &[&str], format: &str) -> Output {
         cmd.env("RECIPES_DIR", cwd.join("recipes"));
     }
     // Use unique temp database per subprocess to avoid SQLite locking
-    // Use /tmp with a simple predictable path
+    // Use /dev/shm (shared memory) for better SQLite performance in Docker
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
     let db_name = format!("myfeed_test_{}_{}.db", std::process::id(), timestamp);
-    let db_path = std::path::Path::new("/tmp").join(&db_name);
-    // Clean up any existing files with same name prefix
+    let db_path = std::path::Path::new("/dev/shm").join(&db_name);
+    // Clean up any existing files
     let _ = std::fs::remove_file(&db_path);
-    let _ = std::fs::remove_file(format!("/tmp/{}-journal", db_name));
-    let _ = std::fs::remove_file(format!("/tmp/{}-wal", db_name));
-    let _ = std::fs::remove_file(format!("/tmp/{}-shm", db_name));
-    cmd.env("DATABASE_URL", format!("sqlite:///tmp/{}", db_name));
+    let _ = std::fs::remove_file(format!("/dev/shm/{}-journal", db_name));
+    let _ = std::fs::remove_file(format!("/dev/shm/{}-wal", db_name));
+    let _ = std::fs::remove_file(format!("/dev/shm/{}-shm", db_name));
+    cmd.env("DATABASE_URL", format!("sqlite:///dev/shm/{}", db_name));
     // Pass through required env vars from CI
     if let Ok(cdp) = std::env::var("CDP_ENDPOINT") {
         cmd.env("CDP_ENDPOINT", cdp);
