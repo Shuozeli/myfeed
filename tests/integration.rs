@@ -10,6 +10,13 @@
 
 use std::process::{Command, Output};
 
+/// Generate a simple unique ID for temp database names
+fn uuid_simple() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let dur = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+    format!("{:x}-{:x}", dur.as_secs(), dur.subsec_nanos())
+}
+
 /// Check if CDP_ENDPOINT is configured
 fn has_browser() -> bool {
     std::env::var("CDP_ENDPOINT").is_ok()
@@ -28,8 +35,17 @@ fn run_crawl(sites: &[&str], format: &str) -> Output {
     if let Ok(cwd) = std::env::current_dir() {
         cmd.env("RECIPES_DIR", cwd.join("recipes"));
     }
-    // Use unique temp database to avoid SQLite locking
-    let db_path = std::env::temp_dir().join(format!("myfeed_test_{}.db", std::process::id()));
+    // Use unique temp database per subprocess to avoid SQLite locking
+    // Use /app as temp dir since /tmp might have filesystem locking issues in Docker
+    let db_path = std::env::temp_dir().join(format!(
+        "myfeed_test_{}_{}.db",
+        std::process::id(),
+        uuid_simple()
+    ));
+    // Remove any stale journal files first
+    let _ = std::fs::remove_file(&db_path);
+    let journal_path = format!("{}-journal", db_path.to_string_lossy());
+    let _ = std::fs::remove_file(journal_path.as_str());
     cmd.env(
         "DATABASE_URL",
         format!("sqlite:///{}", db_path.to_string_lossy()),
