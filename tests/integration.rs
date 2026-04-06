@@ -36,11 +36,18 @@ fn run_crawl(sites: &[&str], format: &str) -> Output {
         .as_nanos();
     let db_name = format!("myfeed_test_{}_{}.db", std::process::id(), timestamp);
     let db_path = std::path::Path::new("/dev/shm").join(&db_name);
-    // Clean up any existing files
+    // Clean up any existing files first
     let _ = std::fs::remove_file(&db_path);
     let _ = std::fs::remove_file(format!("/dev/shm/{}-journal", db_name));
     let _ = std::fs::remove_file(format!("/dev/shm/{}-wal", db_name));
     let _ = std::fs::remove_file(format!("/dev/shm/{}-shm", db_name));
+    // Pre-create the database file by opening and closing it
+    // This ensures the file is properly initialized before subprocess runs
+    use std::io::Write;
+    if let Ok(mut file) = std::fs::File::create(&db_path) {
+        // Write SQLite magic header to ensure file is recognized
+        let _ = file.write_all(b"SQLite format 3\0");
+    }
     cmd.env("DATABASE_URL", format!("sqlite:///dev/shm/{}", db_name));
     // Pass through required env vars from CI
     if let Ok(cdp) = std::env::var("CDP_ENDPOINT") {
