@@ -20,17 +20,26 @@ pub fn list_recipes() {
     let recipes_dir = recipes_base_dir();
     let mut sites = std::collections::HashSet::new();
 
-    // Scan recipes/ for *-feed.yaml files
-    if let Ok(entries) = std::fs::read_dir(&recipes_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_file() && path.to_string_lossy().ends_with("-feed.yaml") {
-                let stem = path.file_stem().unwrap().to_string_lossy();
-                let name = stem.trim_end_matches("-feed");
-                sites.insert(name.to_string());
+    // Recursively scan recipes/ for *-feed.yaml files
+    fn scan(dir: &std::path::Path, sites: &mut std::collections::HashSet<String>) {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    // Skip private directories
+                    if path.file_name().map(|n| n != "private").unwrap_or(false) {
+                        scan(&path, sites);
+                    }
+                } else if path.is_file() && path.to_string_lossy().ends_with("-feed.yaml") {
+                    let stem = path.file_stem().unwrap().to_string_lossy();
+                    let name = stem.trim_end_matches("-feed");
+                    sites.insert(name.to_string());
+                }
             }
         }
     }
+
+    scan(&recipes_dir, &mut sites);
 
     let mut sites: Vec<String> = sites.into_iter().collect();
     sites.sort();

@@ -144,7 +144,8 @@ fn int_field(v: &serde_json::Value, key: &str) -> i32 {
 }
 
 /// Resolve the recipe file path for a given site name.
-/// Checks private recipes first (recipes/private/), then public (recipes/).
+/// Checks private recipes first (recipes/private/), then subdirectories
+/// (recipes/feeds/), then public root (recipes/).
 /// Uses `RECIPES_DIR` env var if set, otherwise resolves relative to the executable.
 pub fn recipe_path(site: &str) -> PathBuf {
     let base = match std::env::var("RECIPES_DIR") {
@@ -162,6 +163,13 @@ pub fn recipe_path(site: &str) -> PathBuf {
         return private_path;
     }
 
+    // Check feeds subdirectory
+    let feeds_path = base.join("feeds").join(&filename);
+    if feeds_path.exists() {
+        return feeds_path;
+    }
+
+    // Fall back to root
     base.join(filename)
 }
 
